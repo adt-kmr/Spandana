@@ -7,7 +7,7 @@ from typing import Optional
 from pydantic import BaseModel, Field, field_validator
 
 # The 46-column Bengaluru incident schema the datagen emits and ingestion accepts.
-# Intentionally includes a capitalized \"Pot_holes\" to exercise normalization (constraint 17).
+# Intentionally includes a capitalized "Pot_holes" to exercise normalization (constraint 17).
 RAW_COLUMNS: list[str] = [
     "event_id", "created_datetime", "start_datetime", "resolved_datetime",
     "closed_datetime", "end_datetime", "event_cause", "sub_cause", "description",
@@ -56,6 +56,18 @@ class IncidentIn(BaseModel):
     num_vehicles_involved: int = 0
     status: str = "open"
     severity_reported: Optional[str] = None
+
+    @field_validator(
+        "created_datetime", "resolved_datetime", "closed_datetime", mode="before"
+    )
+    @classmethod
+    def _empty_to_none(cls, v: object) -> object:
+        # CSVs are read with keep_default_na=False, so missing cells arrive as "".
+        # Empty/whitespace strings must become None or Pydantic rejects them as datetimes,
+        # which would dead-letter every right-censored row (the ~94% with no resolution).
+        if v is None or (isinstance(v, str) and v.strip() == ""):
+            return None
+        return v
 
     @field_validator("event_cause", mode="before")
     @classmethod
