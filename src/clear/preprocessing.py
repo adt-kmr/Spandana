@@ -124,6 +124,16 @@ def count_cues(text: str) -> int:
     t = (text or "").lower()
     return sum(t.count(w) for w in CUE_WORDS)
 
+def _col(df: pd.DataFrame, name: str, default: Any = None) -> pd.Series:
+    """Return column `name` as an index-aligned Series, defaulting if it is absent.
+
+    pandas' DataFrame.get returns the SCALAR default when a column is missing, which
+    breaks chained Series ops (.astype/.map/.fillna). This always yields a Series.
+    """
+    if name in df.columns:
+        return df[name]
+    return pd.Series([default] * len(df), index=df.index)
+
 def prepare_records(records: list[dict], as_of: Optional[datetime] = None) -> pd.DataFrame:
     """Normalize raw incident dicts into the modeling frame. Shared by training and serving."""
     df = pd.DataFrame(records)
@@ -136,29 +146,29 @@ def prepare_records(records: list[dict], as_of: Optional[datetime] = None) -> pd
     closed = df["closed_datetime"].map(parse_utc) if "closed_datetime" in df else None
 
     out = pd.DataFrame(index=df.index)
-    out["event_id"] = df.get("event_id")
+    out["event_id"] = _col(df, "event_id")
     out["event_cause"] = (
-        df.get("event_cause", "others").astype(str).str.strip().str.lower().str.replace(" ", "_")
+        _col(df, "event_cause", "others").astype(str).str.strip().str.lower().str.replace(" ", "_")
     )
     out.loc[~out["event_cause"].isin(EVENT_CAUSES), "event_cause"] = "others"
-    out["corridor"] = df.get("corridor", "unknown").fillna("unknown")
-    out["zone"] = df.get("zone", "unknown")
-    out["priority"] = df.get("priority", "medium").astype(str).str.lower()
+    out["corridor"] = _col(df, "corridor", "unknown").fillna("unknown")
+    out["zone"] = _col(df, "zone", "unknown")
+    out["priority"] = _col(df, "priority", "medium").astype(str).str.lower()
     out["requires_road_closure"] = (
-        df.get("requires_road_closure", False).map(_to_bool).fillna(False)
+        _col(df, "requires_road_closure", False).map(_to_bool).fillna(False)
     )
-    out["latitude"] = pd.to_numeric(df.get("latitude"), errors="coerce")
-    out["longitude"] = pd.to_numeric(df.get("longitude"), errors="coerce")
-    out["rainfall_mm"] = pd.to_numeric(df.get("rainfall_mm", 0.0), errors="coerce").fillna(0.0)
-    out["lanes_blocked"] = pd.to_numeric(df.get("lanes_blocked", 0), errors="coerce").fillna(0)
-    out["description"] = df.get("description", "").fillna("").astype(str)
-    out["comment"] = df.get("comment", "").fillna("").astype(str)
-    out["severity_reported"] = df.get("severity_reported")
+    out["latitude"] = pd.to_numeric(_col(df, "latitude"), errors="coerce")
+    out["longitude"] = pd.to_numeric(_col(df, "longitude"), errors="coerce")
+    out["rainfall_mm"] = pd.to_numeric(_col(df, "rainfall_mm", 0.0), errors="coerce").fillna(0.0)
+    out["lanes_blocked"] = pd.to_numeric(_col(df, "lanes_blocked", 0), errors="coerce").fillna(0)
+    out["description"] = _col(df, "description", "").fillna("").astype(str)
+    out["comment"] = _col(df, "comment", "").fillna("").astype(str)
+    out["severity_reported"] = _col(df, "severity_reported")
 
     # Null-safe vehicle features, gated to breakdown rows only (constraint 17).
-    veh_type = df.get("veh_type")
+    veh_type = _col(df, "veh_type")
     is_breakdown = out["event_cause"].eq("breakdown")
-    out["veh_type"] = veh_type.where(is_breakdown) if veh_type is not None else None
+    out["veh_type"] = veh_type.where(is_breakdown)
     out["has_vehicle"] = (out["veh_type"].notna() & is_breakdown).astype(int)
 
     out["start_utc"] = start
