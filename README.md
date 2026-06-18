@@ -15,7 +15,7 @@ This MVP bakes in 19 pre-mortem fixes. The non-obvious ones:
 
 - **Censored survival analysis for clearance time.** ~94% of incidents have no
   recorded resolution, so a plain regression would be badly biased. CLEAR fits a
-  Weibull AFT model on right-censored durations and reports a **median +
+  Log-Normal AFT model on right-censored durations and reports a **median +
   P10–P90 interval**, never a bare point ETA. Missing resolutions are censored,
   never imputed.
 - **UTC → IST before any time feature.** Hour-of-day matters for traffic; all
