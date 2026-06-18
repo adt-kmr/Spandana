@@ -7,12 +7,18 @@
   --color-warning: #f59e0b;
   --color-info: #0ea5e9;
   --color-success: #22c55e;
+  
+  --color-brutal-yellow: #ffdc00;
+  --color-brutal-blue: #4d90fe;
+  --color-brutal-pink: #ff6b6b;
+  --color-brutal-green: #2ecc71;
+  --color-brutal-bg: #fffbf0;
 }
 
 body {
-  @apply bg-slate-50 text-slate-900;
+  @apply bg-brutal-bg text-black;
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+  font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -22,4 +28,22 @@ body {
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
+}
+
+@layer components {
+  .brutal-card {
+    @apply bg-white border-4 border-black rounded-xl shadow-[8px_8px_0_0_rgba(0,0,0,1)] transition-transform duration-200;
+  }
+  
+  .brutal-card:hover {
+    @apply -translate-y-1 shadow-[12px_12px_0_0_rgba(0,0,0,1)];
+  }
+
+  .brutal-btn {
+    @apply px-6 py-3 font-bold text-black border-4 border-black rounded-full shadow-[4px_4px_0_0_rgba(0,0,0,1)] transition-all duration-200 active:translate-y-1 active:translate-x-1 active:shadow-none;
+  }
+  
+  .brutal-badge {
+    @apply px-3 py-1 text-sm font-bold border-2 border-black rounded-full;
+  }
 }

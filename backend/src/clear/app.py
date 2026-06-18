@@ -12,6 +12,8 @@ from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, Field
+from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware   # <-- add this line
 
 from . import db
 from .auth import require_scope
@@ -137,7 +139,22 @@ def create_app() -> FastAPI:
         title="CLEAR -- Clearance & Logistics Engine for Authority Response",
         lifespan=_lifespan,
     )
-
+    
+     # --- CORS: allow the browser frontend to call the API (fixes OPTIONS 405) ---
+    settings = get_settings()
+    origins = getattr(settings, "cors_origins", None) or [
+        "http://localhost:5173",
+        "http://localhost:3000",
+    ]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    # ---------------------------------------------------------------------------
+    
     @app.get("/healthz")
     def healthz() -> dict:
         return {
