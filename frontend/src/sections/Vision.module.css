@@ -1,0 +1,114 @@
+.vision {
+  position: relative;
+  overflow: hidden;
+  background: var(--color-bg-elevated);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2xl);
+  align-items: center;
+}
+
+.textCol {
+  max-width: 560px;
+}
+
+.sectionLabel {
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: var(--text-sm);
+  color: var(--color-teal);
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  margin-bottom: var(--space-sm);
+}
+
+.title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--text-3xl);
+  text-transform: uppercase;
+  line-height: 1.1;
+  margin-bottom: var(--space-lg);
+}
+
+.paragraph {
+  font-size: var(--text-base);
+  color: var(--color-text-secondary);
+  line-height: 1.8;
+  margin-bottom: var(--space-md);
+}
+
+.quoteCard {
+  padding: var(--space-lg);
+  background: var(--color-bg-glass);
+  border: 1px solid rgba(0, 229, 160, 0.15);
+  border-radius: var(--radius-lg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  margin-block: var(--space-lg);
+  position: relative;
+}
+
+.quoteCard::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  right: -1px;
+  bottom: -1px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, rgba(0, 229, 160, 0.2), transparent 60%);
+  z-index: -1;
+  pointer-events: none;
+}
+
+.quoteText {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--text-lg);
+  text-transform: uppercase;
+  line-height: 1.35;
+  color: var(--color-text-primary);
+}
+
+.quoteText em {
+  font-style: normal;
+  color: var(--color-teal);
+}
+
+.imageCol {
+  position: relative;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.imageCol img {
+  width: 100%;
+  height: 560px;
+  object-fit: cover;
+  border-radius: var(--radius-lg);
+}
+
+.imageGlow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 80%;
+  height: 80%;
+  background: radial-gradient(circle, rgba(0, 229, 160, 0.08), transparent 70%);
+  pointer-events: none;
+}
+
+@media (max-width: 1024px) {
+  .grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-xl);
+  }
+  .imageCol img {
+    height: 380px;
+  }
+}
