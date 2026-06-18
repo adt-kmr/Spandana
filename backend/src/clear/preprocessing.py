@@ -170,21 +170,38 @@ def clearance_label(
     resolved: Optional[datetime],
     closed: Optional[datetime],
     as_of: Optional[datetime],
+    status: Optional[str] = None,
 ) -> tuple[Optional[float], int, int]:
     """Duration contract (constraints 2,3): clearance = resolved (fallback closed) - start.
     Returns (duration_minutes, event_observed, admin_close).
-    end_datetime is never used. Unresolved rows are right-censored (never imputed).
+
+    CRITICAL: parse_utc yields pandas NaT (not None) for missing timestamps, and
+    `NaT is not None` is True. The old `is not None` checks therefore treated EVERY row as
+    'resolved', stamped event_observed=1 on all 8173 rows, never reached the closed/as_of
+    branches, and produced a NaN duration for every row except the 74 truly-resolved ones --
+    silently starving the fitter. Always gate on pd.notna().
+
+    Open incidents are RIGHT-CENSORED at their current age (never imputed). A row that is
+    'closed'/'resolved' by status but has NO end timestamp is informative-missing (the event
+    happened; the export just dropped the time) -- that is NOT genuine censoring, so it is
+    dropped rather than pretending it is still running.
     """
-    if start is None:
+    if start is None or pd.isna(start):
         return None, 0, 0
-    if resolved is not None:
+    has_resolved = resolved is not None and pd.notna(resolved)
+    has_closed = closed is not None and pd.notna(closed)
+    if has_resolved:
         end, observed, admin = resolved, 1, 0
-    elif closed is not None:
+    elif has_closed:
         end, observed, admin = closed, 1, 1  # administrative close flagged separately
-    elif as_of is not None:
-        end, observed, admin = as_of, 0, 0  # right-censored at snapshot time
     else:
-        return None, 0, 0
+        st = str(status).strip().lower() if (status is not None and pd.notna(status)) else ""
+        if st in ("closed", "resolved"):
+            return None, 0, 0  # informative-missing: end happened but timestamp absent -> drop
+        if as_of is not None and pd.notna(as_of):
+            end, observed, admin = as_of, 0, 0  # right-censored at snapshot age
+        else:
+            return None, 0, 0
     minutes = (end - start).total_seconds() / 60.0
     if minutes <= 0:
         return None, observed, admin
@@ -253,6 +270,7 @@ def prepare_records(records: list[dict], as_of: Optional[datetime] = None) -> pd
         if start is not None
         else np.nan
     )
+    status_col = df["status"] if "status" in df else None
     durations, observed, admin = [], [], []
     for i in out.index:
         d, o, a = clearance_label(
@@ -260,6 +278,7 @@ def prepare_records(records: list[dict], as_of: Optional[datetime] = None) -> pd
             resolved.iloc[i] if resolved is not None else None,
             closed.iloc[i] if closed is not None else None,
             as_of,
+            status_col.iloc[i] if status_col is not None else None,
         )
         durations.append(d)
         observed.append(o)

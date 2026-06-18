@@ -46,35 +46,30 @@ class ClearanceModel:
         df = frame.copy()
         T = pd.to_numeric(df["duration_minutes"], errors="coerce")
         E = df["event_observed"].astype(int)
-        # Train ONLY on rows with a real, observed clearance time (resolved, or admin-closed
-        # WITH a closed_datetime). Rows with no resolution timestamp -- status 'active', or
-        # 'closed' with a missing closed_datetime in the export -- carry NO clearance signal.
-        # The previous code censored every one of them at `cap`, which in the real ASTraM
-        # export pinned ~61% of the sample at 1440 and dragged every predicted median to the
-        # ceiling. They are informative-missing, not genuinely censored, so we drop them.
-        # (To turn these into PROPER right-censored rows you need each open incident's
-        # age = as_of - start, which is computed in preprocessing, not here.)
-        usable = E.eq(1) & T.notna() & (T > 0)
+        # Keep EVERY row with a usable survival time: observed clearances (resolved +
+        # admin-closed, E=1) AND genuinely-open incidents right-censored at their current
+        # age (E=0, duration = as_of - start, set in preprocessing). This is the legitimate
+        # survival way to use unresolved incidents -- censor, never impute a fake clearance
+        # time. Rows with no usable time (NaN / <=0) are dropped; closed-without-a-timestamp
+        # rows were already dropped upstream as informative-missing.
+        usable = T.notna() & (T > 0)
         df = df.loc[usable].copy()
         T = T.loc[usable]
         E = E.loc[usable]
-        if len(df) < 20:
-            raise ValueError(f"too few usable clearance rows to fit: {len(df)}")
-        # Genuine long-tail admin closes (cleared days/weeks later) are RIGHT-CENSORED at the
-        # cap (E=0) rather than clipped to an exact 1440 observation, so a spike of exact-cap
+        n_observed = int((E == 1).sum())
+        if n_observed < 20:
+            raise ValueError(f"too few observed clearance rows to fit: {n_observed}")
+        # Long-tail admin closes (cleared days/weeks later) are RIGHT-CENSORED at the cap
+        # (E=0) rather than clipped to an exact cap observation, so a spike of exact-cap
         # events can't bias the Weibull tail. Compute the censor flag from the un-clipped T.
         E = E.where(T <= cap, other=0)
         T = T.clip(lower=1.0, upper=cap)
         design = _design(df)
         design = design.assign(T=T.values, E=E.values)
-        # penalizer raised 0.1 -> 0.5. With only a few hundred resolved rows and sparse one-hot
-        # cause/closure combos, a weak penalty let a single rare-covariate coefficient blow the
-        # linear predictor up, so predict_percentile extrapolated past `cap` and clamped to 1440
-        # (the median/p90 wall seen in the smoke test). Stronger L2 shrinks those coefficients
-        # toward the baseline hazard, so rare-covariate incidents fall back to a near-global-
-        # median ETA instead of the ceiling. The Weibull shape (spread) is unaffected, so the
-        # P10-P90 interval stays meaningful.
-        aft = WeibullAFTFitter(penalizer=0.5)
+        # With thousands of real observations now reaching the fitter (was 74 before the NaT
+        # labeling bug was fixed), the heavy penalizer=0.5 band-aid is no longer needed; 0.1
+        # lets the covariates breathe. Bump back up if a rare-covariate coefficient blows up.
+        aft = WeibullAFTFitter(penalizer=0.1)
         aft.fit(design, duration_col="T", event_col="E")
         cols = [c for c in design.columns if c not in ("T", "E")]
         return cls(aft, cols, version)
