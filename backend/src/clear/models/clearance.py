@@ -7,7 +7,7 @@ from typing import Optional
 import joblib
 import numpy as np
 import pandas as pd
-from lifelines import WeibullAFTFitter
+from lifelines import LogNormalAFTFitter
 
 from ..config import get_settings
 from ..preprocessing import prepare_records
@@ -29,7 +29,7 @@ def _design(frame: pd.DataFrame) -> pd.DataFrame:
     return feats.loc[:, feats.nunique() > 1] if len(feats) > 1 else feats
 
 class ClearanceModel:
-    def __init__(self, aft: WeibullAFTFitter, columns: list[str], version: str):
+    def __init__(self, aft: LogNormalAFTFitter, columns: list[str], version: str):
         self.aft = aft
         self.columns = columns
         self.version = version
@@ -65,7 +65,7 @@ class ClearanceModel:
         # With thousands of real observations now reaching the fitter (was 74 before the NaT
         # labeling bug was fixed), the heavy penalizer=0.5 band-aid is no longer needed; 0.1
         # lets the covariates breathe. Bump back up if a rare-covariate coefficient blows up.
-        aft = WeibullAFTFitter(penalizer=0.1)
+        aft = LogNormalAFTFitter(penalizer=0.1)
         aft.fit(design, duration_col="T", event_col="E")
         cols = [c for c in design.columns if c not in ("T", "E")]
         return cls(aft, cols, version)
