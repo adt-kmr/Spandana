@@ -46,24 +46,20 @@ class ClearanceModel:
         df = frame.copy()
         T = pd.to_numeric(df["duration_minutes"], errors="coerce")
         E = df["event_observed"].astype(int)
-        # Keep EVERY row with a usable survival time: observed clearances (resolved +
-        # admin-closed, E=1) AND genuinely-open incidents right-censored at their current
-        # age (E=0, duration = as_of - start, set in preprocessing). This is the legitimate
-        # survival way to use unresolved incidents -- censor, never impute a fake clearance
-        # time. Rows with no usable time (NaN / <=0) are dropped; closed-without-a-timestamp
-        # rows were already dropped upstream as informative-missing.
-        usable = T.notna() & (T > 0)
+        # closed_datetime is an ADMINISTRATIVE close, not physical clearance: ~3,100 rows
+        # carry closed-based durations up to ~140 days, and ~1,000 never-closed "open" rows
+        # sit a MEDIAN of 46 days old. Round 2 right-censored all of these at the cap, piling
+        # ~1,679 "not cleared by 24h" rows onto the fit and pinning every prediction to the
+        # 1440 ceiling. Drop everything over the cap instead and keep only genuine sub-24h
+        # clearances (road incidents effectively always clear inside a day). Deliberate
+        # weak-label boundary -- disclose it in the demo.
+        usable = T.notna() & (T > 0) & (T <= cap)
         df = df.loc[usable].copy()
         T = T.loc[usable]
         E = E.loc[usable]
         n_observed = int((E == 1).sum())
         if n_observed < 20:
             raise ValueError(f"too few observed clearance rows to fit: {n_observed}")
-        # Long-tail admin closes (cleared days/weeks later) are RIGHT-CENSORED at the cap
-        # (E=0) rather than clipped to an exact cap observation, so a spike of exact-cap
-        # events can't bias the Weibull tail. Compute the censor flag from the un-clipped T.
-        E = E.where(T <= cap, other=0)
-        T = T.clip(lower=1.0, upper=cap)
         design = _design(df)
         design = design.assign(T=T.values, E=E.values)
         # With thousands of real observations now reaching the fitter (was 74 before the NaT
