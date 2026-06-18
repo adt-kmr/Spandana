@@ -10,7 +10,14 @@ from pydantic import ValidationError
 from . import db
 from .config import get_settings
 from .logging_setup import configure_logging
-from .preprocessing import parse_utc, prepare_records, to_ist
+from .preprocessing import (
+    apply_column_aliases,
+    normalize_columns,
+    parse_utc,
+    prepare_records,
+    scrub_sentinels,
+    to_ist,
+)
 from .schema import IncidentIn
 
 log = configure_logging()
@@ -72,6 +79,7 @@ def ingest_csv(csv_path: str) -> dict:
     conn = db.get_conn()
     try:
         raw = pd.read_csv(csv_path, dtype=str, keep_default_na=False)
+        raw = scrub_sentinels(apply_column_aliases(normalize_columns(raw)))
         written = dup = dead = 0
         for rec in raw.to_dict(orient="records"):
             res = ingest_one(conn, rec)
