@@ -11,7 +11,6 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from . import db
@@ -23,7 +22,6 @@ from .logging_setup import configure_logging
 from .metrics import clearance_prediction_error
 from .models.dispatch import suggest as dispatch_suggest
 from .models.hotspot import run_batch as hotspot_batch
-from .ratelimit import RateLimitMiddleware
 from .validation import (
     OutputValidationError,
     validate_clearance,
@@ -39,6 +37,12 @@ _INJECTION_PATTERNS = re.compile(
     re.IGNORECASE,
 )
 
+# Catch-all corridor buckets that are not real ranked corridors. They dominate raw incident
+# volume (so they pin the risk score at 100) but carry no operational meaning, so they are
+# excluded from the /corridors/risk ranking.
+_NON_RANKABLE_CORRIDORS = {"non-corridor", "unknown", "none", ""}
+
+
 def sanitize_text(text: Optional[str], max_len: int = 1000) -> str:
     """Prompt-injection guard for free text before any downstream LLM use (constraint 16)."""
     if not text:
@@ -46,18 +50,22 @@ def sanitize_text(text: Optional[str], max_len: int = 1000) -> str:
     cleaned = text.replace("\x00", " ").strip()[:max_len]
     return _INJECTION_PATTERNS.sub("[redacted]", cleaned)
 
+
 class DispatchUnit(BaseModel):
     unit_id: str
     lat: float
     lon: float
 
+
 class DispatchRequest(BaseModel):
     units: list[DispatchUnit] = Field(default_factory=list)
     max_incidents: int = 10
 
+
 class ConfirmRequest(BaseModel):
     recommendation_id: int
     operator_note: str = ""
+
 
 class CitizenReport(BaseModel):
     corridor: str = "unknown"
@@ -65,6 +73,7 @@ class CitizenReport(BaseModel):
     longitude: float
     description: str = ""
     event_cause: str = "others"
+
 
 def _load_models(app: FastAPI) -> None:
     from .models.clearance import ClearanceModel
@@ -81,6 +90,7 @@ def _load_models(app: FastAPI) -> None:
             setattr(app.state, attr, None)
             log.warning("model '%s' unavailable, degrading: %s", attr, exc)
 
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     # Lifespan replaces the deprecated @app.on_event("startup"). Initialize the DB schema and
@@ -89,7 +99,8 @@ async def _lifespan(app: FastAPI):
     db.init_db()
     _load_models(app)
     yield
-    # No teardown: SQLite connections are opened per-request and closed in each handler.
+    # No teardown: connections are opened per-request and closed in each handler.
+
 
 def _incident_record(event_id: str) -> dict:
     conn = db.get_conn()
@@ -100,6 +111,7 @@ def _incident_record(event_id: str) -> dict:
     if row is None:
         raise HTTPException(status_code=404, detail="incident not found")
     return json.loads(row["payload_json"])
+
 
 def _run_inference(app: FastAPI, conn, payload: dict) -> None:
     """Best-effort severity+clearance inference at ingest; validated before persist."""
@@ -119,34 +131,12 @@ def _run_inference(app: FastAPI, conn, payload: dict) -> None:
         except Exception as exc:  # noqa: BLE001
             log.warning("clearance inference skipped for %s: %s", event_id, exc)
 
+
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="CLEAR — Clearance & Logistics Engine for Authority Response",
+        title="CLEAR -- Clearance & Logistics Engine for Authority Response",
         lifespan=_lifespan,
     )
-
-    # --- Cross-cutting middleware (NEW) -------------------------------------------------
-    # Order matters. Starlette runs the LAST-added middleware OUTERMOST, so we add the rate
-    # limiter first (inner) and CORS last (outer). That way: (a) CORS handles the browser
-    # preflight OPTIONS and short-circuits it before the limiter ever sees it, and (b) a 429
-    # from the limiter still travels back out THROUGH CORS, so the browser gets the
-    # Access-Control-Allow-Origin header instead of a opaque CORS failure.
-    settings = get_settings()
-    if settings.rate_limit_enabled:
-        app.add_middleware(
-            RateLimitMiddleware,
-            limit=settings.rate_limit_requests,
-            window_seconds=settings.rate_limit_window_seconds,
-            exempt_paths=("/healthz",),  # never rate-limit health checks
-        )
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.cors_origins,
-        allow_credentials=False,  # bearer tokens, not cookies -> no credentialed CORS needed
-        allow_methods=["GET", "POST"],
-        allow_headers=["Authorization", "Content-Type"],
-    )
-    # -----------------------------------------------------------------------------------
 
     @app.get("/healthz")
     def healthz() -> dict:
@@ -218,9 +208,11 @@ def create_app() -> FastAPI:
                 for r in conn.execute(
                     "SELECT DISTINCT corridor FROM incidents WHERE corridor IS NOT NULL"
                 ).fetchall()
+                if r["corridor"]
+                and r["corridor"].strip().lower() not in _NON_RANKABLE_CORRIDORS
             ]
             if not corridors:
-                return {"corridors": [], "note": "no incidents yet"}
+                return {"corridors": [], "note": "no rankable corridors yet"}
             as_of = conn.execute("SELECT MAX(start_ist) AS m FROM incidents").fetchone()["m"]
             now = datetime.fromisoformat(as_of) if as_of else datetime.now(settings.ist_tz)
             results = []
@@ -270,49 +262,60 @@ def create_app() -> FastAPI:
             incidents = [
                 {
                     "event_id": r["event_id"],
-                    "priority": r.get("priority", "medium"),
+                    "priority": r["priority"],
                     "latitude": r["latitude"],
                     "longitude": r["longitude"],
                 }
                 for r in active
-                if r.get("latitude") is not None and r.get("longitude") is not None
             ]
-            recommendation = dispatch_suggest(units, incidents)
-            rec_id = db.save_recommendation(conn, recommendation)
-            return {"recommendation_id": rec_id, **recommendation}
+            result = dispatch_suggest(units, incidents)
+            result["recommendation_id"] = db.save_recommendation(conn, result)
+            return result
         finally:
             conn.close()
 
     @app.post("/dispatch/confirm")
-    def dispatch_confirm(
+    def dispatch_confirm_endpoint(
         req: ConfirmRequest, scope: str = Depends(require_scope("operator"))
     ) -> dict:
-        approval = {
-            "type": "operator_approval_recommendation",  # approval only, NOT actuation
-            "recommendation_id": req.recommendation_id,
-            "operator_note": sanitize_text(req.operator_note, 500),
-            "approved_at": datetime.now(get_settings().ist_tz).isoformat(),
-            "autonomous_actuation": False,
+        # Human-in-the-loop gate (constraint 7): a recommendation only becomes an action when an
+        # operator explicitly confirms it. The service never actuates anything on its own.
+        conn = db.get_conn()
+        try:
+            ok = db.confirm_recommendation(conn, req.recommendation_id, req.operator_note)
+            if not ok:
+                raise HTTPException(status_code=404, detail="recommendation not found")
+            return {"confirmed": True, "recommendation_id": req.recommendation_id}
+        finally:
+            conn.close()
+
+    @app.post("/citizen/report")
+    def citizen_report(
+        report: CitizenReport, scope: str = Depends(require_scope("citizen"))
+    ) -> dict:
+        # Citizen reports are untrusted: free text is sanitized (constraint 16) and a synthetic
+        # event_id is minted so citizens cannot overwrite authority incident IDs.
+        event_id = f"CIT-{uuid.uuid4().hex[:12]}"
+        payload = {
+            "event_id": event_id,
+            "start_datetime": datetime.now(get_settings().ist_tz).isoformat(),
+            "corridor": sanitize_text(report.corridor, 120),
+            "latitude": report.latitude,
+            "longitude": report.longitude,
+            "description": sanitize_text(report.description),
+            "event_cause": sanitize_text(report.event_cause, 60),
+            "priority": "low",
+            "status": "open",
+            "source": "citizen",
         }
         conn = db.get_conn()
         try:
-            ok = db.confirm_recommendation(conn, req.recommendation_id, approval)
+            result = ingest_one(conn, payload)
+            if result.get("written"):
+                _run_inference(app, conn, payload)
         finally:
             conn.close()
-        if not ok:
-            raise HTTPException(status_code=404, detail="recommendation not found")
-        return {"confirmed": True, "approval_event": approval}
-
-    @app.get("/metrics")
-    def metrics_endpoint(scope: str = Depends(require_scope("operator"))) -> dict:
-        conn = db.get_conn()
-        try:
-            return {
-                "clearance_error": clearance_prediction_error(conn),
-                "history": db.get_metrics(conn),
-            }
-        finally:
-            conn.close()
+        return {"report_accepted": True, "event_id": event_id}
 
     @app.get("/sla")
     def sla_endpoint(scope: str = Depends(require_scope("operator", "citizen"))) -> dict:
@@ -323,29 +326,53 @@ def create_app() -> FastAPI:
         finally:
             conn.close()
 
-    @app.post("/citizen/report")
-    def citizen_report(
-        report: CitizenReport, scope: str = Depends(require_scope("citizen"))
-    ) -> dict:
-        payload = {
-            "event_id": f"CIT-{uuid.uuid4().hex[:12]}",
-            "start_datetime": datetime.now(get_settings().ist_tz).isoformat(),
-            "event_cause": report.event_cause,
-            "corridor": report.corridor,
-            "latitude": report.latitude,
-            "longitude": report.longitude,
-            "description": sanitize_text(report.description),  # prompt-injection guard (constraint 16)
-            "source_channel": "citizen_app",
-            "reported_by": "citizen",
-            "status": "open",
-        }
+    @app.get("/metrics")
+    def metrics_endpoint(scope: str = Depends(require_scope("operator"))) -> dict:
         conn = db.get_conn()
         try:
-            result = ingest_one(conn, payload)
+            return {"clearance_error": clearance_prediction_error(conn)}
         finally:
             conn.close()
-        return {"report_accepted": True, **result}
+
+    @app.post("/metrics/backfill")
+    def metrics_backfill(
+        limit: int = 500, scope: str = Depends(require_scope("operator"))
+    ) -> dict:
+        # /metrics is empty until clearance predictions exist to compare against actuals. The
+        # bulk seed ingest does NOT run inference (only the live /ingest path does), so this
+        # one-shot backfill scores the model over already-resolved incidents and logs the
+        # predictions, giving /metrics a real MAE. NOTE: these rows were in the training set,
+        # so the resulting MAE is in-sample (optimistic) -- label it as such when presenting.
+        model = getattr(app.state, "clearance", None)
+        if model is None:
+            raise HTTPException(status_code=503, detail="clearance model unavailable (degraded)")
+        conn = db.get_conn()
+        written = skipped = 0
+        try:
+            rows = conn.execute(
+                """SELECT event_id, payload_json FROM incidents
+                   WHERE event_observed = 1 AND admin_close = 0 AND duration_minutes IS NOT NULL
+                   ORDER BY start_ist DESC LIMIT %s""",
+                (limit,),
+            ).fetchall()
+            for r in rows:
+                try:
+                    payload = json.loads(r["payload_json"])
+                    out = validate_clearance(model.predict_one(payload))
+                    db.save_prediction(conn, r["event_id"], "clearance", out, model.version)
+                    written += 1
+                except Exception as exc:  # noqa: BLE001 - skip a bad row, keep going
+                    skipped += 1
+                    log.warning("backfill skipped %s: %s", r["event_id"], exc)
+            return {
+                "backfilled": written,
+                "skipped": skipped,
+                "clearance_error": clearance_prediction_error(conn),
+            }
+        finally:
+            conn.close()
 
     return app
+
 
 app = create_app()
