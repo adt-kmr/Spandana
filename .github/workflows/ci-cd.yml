@@ -25,7 +25,7 @@ jobs:
       # Advisory only: report style issues but never fail the pipeline (--exit-zero), so a
       # lint nit can't block a hackathon deploy.
       - name: Ruff
-        run: ruff check . --exit-zero
+        run: ruff check backend/ --exit-zero
 
   test:
     name: Tests (pytest) + boot smoke
@@ -55,17 +55,18 @@ jobs:
       - name: Install system deps
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgomp1
       - name: Install package (with dev extras)
-        run: pip install --upgrade pip && pip install ".[dev]"
+        run: pip install --upgrade pip && pip install "./backend[dev]"
       # Real suite. DB-backed tests run against the throwaway Postgres service above; pure unit
       # tests need no DB (conftest.py blocks DB tests against non-local URLs). A non-zero exit
       # fails the job and blocks deploy.
       - name: Pytest
-        run: pytest -q
+        run: cd backend && pytest -q
       # Self-contained boot check: builds the real app and asserts /healthz == ok via FastAPI's
       # TestClient (exercises lifespan startup, no network server). Independent of seed CSV or
       # trained models -> models may report false, but the app MUST still boot and serve.
       - name: Boot + /healthz
         run: |
+          cd backend
           python - <<'PY'
           from fastapi.testclient import TestClient
           from clear.app import app

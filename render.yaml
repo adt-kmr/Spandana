@@ -2,6 +2,7 @@ services:
   - type: web
     name: clear-api
     runtime: docker
+    dockerContext: ./backend
     dockerfilePath: ./Dockerfile
     plan: free
     healthCheckPath: /healthz
