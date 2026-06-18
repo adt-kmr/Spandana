@@ -1,14 +1,18 @@
-"""SQLite persistence. Mirrors the AWS flow locally: store -> infer -> serve."""
+"""Postgres persistence (Neon). All SQL is isolated here; the rest of the app is
+database-agnostic and only calls these helpers. Store -> infer -> serve."""
 from __future__ import annotations
 
 import json
-import sqlite3
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
+
+import psycopg
+from psycopg.rows import dict_row
 
 from .config import get_settings
 
+# Mirrors the original SQLite tables with Postgres types. Booleans are INTEGER (0/1) and
+# timestamps are TEXT on purpose, to keep behavior identical to the SQLite version.
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS incidents (
   event_id TEXT PRIMARY KEY,
@@ -16,200 +20,169 @@ CREATE TABLE IF NOT EXISTS incidents (
   event_cause TEXT, corridor TEXT, priority TEXT,
   requires_road_closure INTEGER,
   start_ist TEXT, resolved_ist TEXT, closed_ist TEXT,
-  duration_minutes REAL, event_observed INTEGER, admin_close INTEGER,
-  junction_node TEXT, latitude REAL, longitude REAL,
+  duration_minutes DOUBLE PRECISION, event_observed INTEGER, admin_close INTEGER,
+  junction_node TEXT, latitude DOUBLE PRECISION, longitude DOUBLE PRECISION,
   status TEXT, ingested_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_incidents_corridor ON incidents(corridor);
 CREATE INDEX IF NOT EXISTS idx_incidents_start ON incidents(start_ist);
 CREATE TABLE IF NOT EXISTS dead_letter (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   raw_json TEXT, error TEXT, attempts INTEGER, created_at TEXT
 );
 CREATE TABLE IF NOT EXISTS predictions (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   event_id TEXT, model TEXT, output_json TEXT, model_version TEXT, created_at TEXT
 );
 CREATE TABLE IF NOT EXISTS recommendations (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  created_at TEXT, payload_json TEXT, confirmed INTEGER DEFAULT 0,
-  approval_event_json TEXT
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  created_at TEXT, payload_json TEXT, confirmed INTEGER DEFAULT 0, approval_event_json TEXT
 );
 CREATE TABLE IF NOT EXISTS corridor_risk (
-  corridor TEXT PRIMARY KEY, as_of TEXT, risk REAL, horizon_hours INTEGER, stale INTEGER
+  corridor TEXT PRIMARY KEY, as_of TEXT, risk DOUBLE PRECISION, horizon_hours INTEGER, stale INTEGER
 );
 CREATE TABLE IF NOT EXISTS model_registry (
   model TEXT, version TEXT, stage TEXT, path TEXT, metrics_json TEXT, created_at TEXT,
   PRIMARY KEY (model, version)
 );
 CREATE TABLE IF NOT EXISTS correctness_metrics (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  model TEXT, metric TEXT, value REAL, created_at TEXT
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  model TEXT, metric TEXT, value DOUBLE PRECISION, created_at TEXT
 );
 CREATE TABLE IF NOT EXISTS junction_cache (
-  raw_key TEXT PRIMARY KEY, node_id TEXT, node_lat REAL, node_lon REAL
+  raw_key TEXT PRIMARY KEY, node_id TEXT, node_lat DOUBLE PRECISION, node_lon DOUBLE PRECISION
 );
 """
-
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
-
-def get_conn(path: Optional[Path] = None) -> sqlite3.Connection:
+def get_conn() -> psycopg.Connection:
+    """Open a Neon/Postgres connection yielding dict rows (like sqlite3.Row).
+    Point CLEAR_DATABASE_URL at the Neon *pooler* host; psycopg reads sslmode=require
+    from the URL itself."""
     settings = get_settings()
     settings.ensure_dirs()
-    conn = sqlite3.connect(str(path or settings.db_path))
-    conn.row_factory = sqlite3.Row
-    # Write-throughput pragmas (P2). WAL lets readers and the single writer proceed
-    # concurrently; synchronous=NORMAL is the safe-with-WAL durability level (survives app
-    # crashes; only a power loss exactly at checkpoint risks the last commit); temp_store=
-    # MEMORY keeps temp b-trees off disk; cache_size=-65536 is a ~64 MB page cache (negative
-    # value = KiB) that cuts page faults during bulk ingest; busy_timeout avoids spurious
-    # 'database is locked' errors under WAL.
-    conn.execute("PRAGMA journal_mode=WAL;")
-    conn.execute("PRAGMA synchronous=NORMAL;")
-    conn.execute("PRAGMA temp_store=MEMORY;")
-    conn.execute("PRAGMA cache_size=-65536;")
-    conn.execute("PRAGMA busy_timeout=5000;")
-    conn.execute("PRAGMA foreign_keys=ON;")
-    return conn
+    return psycopg.connect(settings.database_url, row_factory=dict_row)
 
-
-def init_db(conn: Optional[sqlite3.Connection] = None) -> None:
+def init_db(conn: Optional[psycopg.Connection] = None) -> None:
     own = conn is None
     conn = conn or get_conn()
     try:
-        conn.executescript(_SCHEMA)
+        with conn.cursor() as cur:
+            for stmt in _SCHEMA.split(";"):
+                if stmt.strip():
+                    cur.execute(stmt)
         conn.commit()
     finally:
         if own:
             conn.close()
 
+def incident_exists(conn: psycopg.Connection, event_id: str) -> bool:
+    return conn.execute(
+        "SELECT 1 FROM incidents WHERE event_id = %s", (event_id,)
+    ).fetchone() is not None
 
-def incident_exists(conn: sqlite3.Connection, event_id: str) -> bool:
-    cur = conn.execute("SELECT 1 FROM incidents WHERE event_id = ?", (event_id,))
-    return cur.fetchone() is not None
-
-
-def insert_incident(conn: sqlite3.Connection, row: dict[str, Any], *, commit: bool = True) -> bool:
+def insert_incident(conn: psycopg.Connection, row: dict[str, Any], *, commit: bool = True) -> bool:
     """Idempotent insert keyed on event_id (constraint 8). Returns True if newly written.
-
-    Uses INSERT ... ON CONFLICT(event_id) DO NOTHING so a duplicate is a single round-trip
-    (no separate SELECT), and cur.rowcount distinguishes a new write (1) from a skip (0).
-    Pass commit=False during bulk ingest so many rows share one transaction -- the per-row
-    commit() was the dominant ingest cost.
-    """
+    ON CONFLICT DO NOTHING makes a duplicate a single round-trip; rowcount is 1 for a new
+    write, 0 for a skip. commit=False lets bulk ingest batch many rows per transaction."""
     cur = conn.execute(
         """INSERT INTO incidents (event_id, payload_json, event_cause, corridor, priority,
            requires_road_closure, start_ist, resolved_ist, closed_ist, duration_minutes,
            event_observed, admin_close, junction_node, latitude, longitude, status, ingested_at)
-           VALUES (:event_id,:payload_json,:event_cause,:corridor,:priority,
-           :requires_road_closure,:start_ist,:resolved_ist,:closed_ist,:duration_minutes,
-           :event_observed,:admin_close,:junction_node,:latitude,:longitude,:status,:ingested_at)
-           ON CONFLICT(event_id) DO NOTHING""",
+           VALUES (%(event_id)s,%(payload_json)s,%(event_cause)s,%(corridor)s,%(priority)s,
+           %(requires_road_closure)s,%(start_ist)s,%(resolved_ist)s,%(closed_ist)s,
+           %(duration_minutes)s,%(event_observed)s,%(admin_close)s,%(junction_node)s,
+           %(latitude)s,%(longitude)s,%(status)s,%(ingested_at)s)
+           ON CONFLICT (event_id) DO NOTHING""",
         {**row, "ingested_at": _now()},
     )
     if commit:
         conn.commit()
     return cur.rowcount > 0
 
-
-def insert_dead_letter(
-    conn: sqlite3.Connection, raw: dict, error: str, attempts: int, *, commit: bool = True
-) -> None:
+def insert_dead_letter(conn, raw, error, attempts, *, commit: bool = True) -> None:
     conn.execute(
-        "INSERT INTO dead_letter (raw_json, error, attempts, created_at) VALUES (?,?,?,?)",
+        "INSERT INTO dead_letter (raw_json, error, attempts, created_at) VALUES (%s,%s,%s,%s)",
         (json.dumps(raw, default=str), error, attempts, _now()),
     )
     if commit:
         conn.commit()
 
-
 def save_prediction(conn, event_id, model, output, version) -> None:
     conn.execute(
         "INSERT INTO predictions (event_id, model, output_json, model_version, created_at)"
-        " VALUES (?,?,?,?,?)",
+        " VALUES (%s,%s,%s,%s,%s)",
         (event_id, model, json.dumps(output, default=str), version, _now()),
     )
     conn.commit()
 
-
 def save_recommendation(conn, payload: dict) -> int:
-    cur = conn.execute(
-        "INSERT INTO recommendations (created_at, payload_json) VALUES (?,?)",
+    rec_id = conn.execute(
+        "INSERT INTO recommendations (created_at, payload_json) VALUES (%s,%s) RETURNING id",
         (_now(), json.dumps(payload, default=str)),
-    )
+    ).fetchone()["id"]
     conn.commit()
-    return int(cur.lastrowid)
+    return int(rec_id)
 
-
-def confirm_recommendation(conn, rec_id: int, approval_event: dict) -> bool:
-    cur = conn.execute("SELECT 1 FROM recommendations WHERE id = ?", (rec_id,))
-    if cur.fetchone() is None:
+def confirm_recommendation(conn, rec_id, approval_event) -> bool:
+    if conn.execute(
+        "SELECT 1 FROM recommendations WHERE id = %s", (rec_id,)
+    ).fetchone() is None:
         return False
     conn.execute(
-        "UPDATE recommendations SET confirmed = 1, approval_event_json = ? WHERE id = ?",
+        "UPDATE recommendations SET confirmed = 1, approval_event_json = %s WHERE id = %s",
         (json.dumps(approval_event, default=str), rec_id),
     )
     conn.commit()
     return True
 
-
 def upsert_corridor_risk(conn, corridor, risk, horizon, stale) -> None:
     conn.execute(
         """INSERT INTO corridor_risk (corridor, as_of, risk, horizon_hours, stale)
-           VALUES (?,?,?,?,?)
-           ON CONFLICT(corridor) DO UPDATE SET as_of=excluded.as_of, risk=excluded.risk,
-           horizon_hours=excluded.horizon_hours, stale=excluded.stale""",
+           VALUES (%s,%s,%s,%s,%s)
+           ON CONFLICT (corridor) DO UPDATE SET as_of = EXCLUDED.as_of, risk = EXCLUDED.risk,
+           horizon_hours = EXCLUDED.horizon_hours, stale = EXCLUDED.stale""",
         (corridor, _now(), float(risk), int(horizon), int(bool(stale))),
     )
     conn.commit()
 
-
 def get_last_corridor_risk(conn) -> list[dict]:
-    rows = conn.execute("SELECT * FROM corridor_risk").fetchall()
-    return [dict(r) for r in rows]
+    return [dict(r) for r in conn.execute("SELECT * FROM corridor_risk").fetchall()]
 
-
-def register_model(conn, model, version, stage, path, metrics: dict) -> None:
+def register_model(conn, model, version, stage, path, metrics) -> None:
     conn.execute(
         """INSERT INTO model_registry (model, version, stage, path, metrics_json, created_at)
-           VALUES (?,?,?,?,?,?)
-           ON CONFLICT(model, version) DO UPDATE SET stage=excluded.stage,
-           path=excluded.path, metrics_json=excluded.metrics_json""",
+           VALUES (%s,%s,%s,%s,%s,%s)
+           ON CONFLICT (model, version) DO UPDATE SET stage = EXCLUDED.stage,
+           path = EXCLUDED.path, metrics_json = EXCLUDED.metrics_json""",
         (model, version, stage, str(path), json.dumps(metrics, default=str), _now()),
     )
     conn.commit()
 
-
 def set_model_stage(conn, model, version, stage) -> None:
     conn.execute(
-        "UPDATE model_registry SET stage = ? WHERE model = ? AND version = ?",
+        "UPDATE model_registry SET stage = %s WHERE model = %s AND version = %s",
         (stage, model, version),
     )
     conn.commit()
 
-
-def get_models(conn, model: Optional[str] = None) -> list[dict]:
+def get_models(conn, model=None) -> list[dict]:
     if model:
         rows = conn.execute(
-            "SELECT * FROM model_registry WHERE model = ? ORDER BY created_at DESC", (model,)
+            "SELECT * FROM model_registry WHERE model = %s ORDER BY created_at DESC", (model,)
         ).fetchall()
     else:
-        rows = conn.execute(
-            "SELECT * FROM model_registry ORDER BY created_at DESC"
-        ).fetchall()
+        rows = conn.execute("SELECT * FROM model_registry ORDER BY created_at DESC").fetchall()
     return [dict(r) for r in rows]
-
 
 def record_metric(conn, model, metric, value) -> None:
     conn.execute(
-        "INSERT INTO correctness_metrics (model, metric, value, created_at) VALUES (?,?,?,?)",
+        "INSERT INTO correctness_metrics (model, metric, value, created_at) VALUES (%s,%s,%s,%s)",
         (model, metric, float(value), _now()),
     )
     conn.commit()
-
 
 def get_metrics(conn) -> list[dict]:
     rows = conn.execute(
@@ -218,18 +191,15 @@ def get_metrics(conn) -> list[dict]:
     ).fetchall()
     return [dict(r) for r in rows]
 
-
 def get_incidents(conn, limit: int = 500) -> list[dict]:
     rows = conn.execute(
-        "SELECT * FROM incidents ORDER BY start_ist DESC LIMIT ?", (limit,)
+        "SELECT * FROM incidents ORDER BY start_ist DESC LIMIT %s", (limit,)
     ).fetchall()
     return [dict(r) for r in rows]
 
-
 def get_incident(conn, event_id: str) -> Optional[dict]:
-    row = conn.execute("SELECT * FROM incidents WHERE event_id = ?", (event_id,)).fetchone()
+    row = conn.execute("SELECT * FROM incidents WHERE event_id = %s", (event_id,)).fetchone()
     return dict(row) if row else None
-
 
 def get_active_incidents(conn) -> list[dict]:
     rows = conn.execute(
@@ -237,28 +207,26 @@ def get_active_incidents(conn) -> list[dict]:
     ).fetchall()
     return [dict(r) for r in rows]
 
-
-def recent_hourly_counts(conn, corridor: str, as_of_iso: str, hours: int) -> list[int]:
-    """Counts per hour for the `hours` hours ending at as_of (IST strings, lexicographically sortable)."""
-    from datetime import timedelta
+def recent_hourly_counts(conn, corridor, as_of_iso, hours) -> list[int]:
+    """Counts per hour for the `hours` hours ending at as_of (IST ISO strings, sortable)."""
     as_of = datetime.fromisoformat(as_of_iso)
     counts: list[int] = []
     for i in range(hours, 0, -1):
         lo = (as_of - timedelta(hours=i)).isoformat()
         hi = (as_of - timedelta(hours=i - 1)).isoformat()
-        cur = conn.execute(
-            "SELECT COUNT(*) AS c FROM incidents WHERE corridor = ? AND start_ist >= ? AND start_ist < ?",
+        c = conn.execute(
+            "SELECT COUNT(*) AS c FROM incidents WHERE corridor = %s AND start_ist >= %s"
+            " AND start_ist < %s",
             (corridor, lo, hi),
-        )
-        counts.append(int(cur.fetchone()["c"]))
+        ).fetchone()["c"]
+        counts.append(int(c))
     return counts
 
-
 def sla_over_resolved(conn, threshold_minutes: int) -> dict:
-    """SLA% computed ONLY over the resolved subset, labeled as such (constraint 19)."""
+    """SLA% computed ONLY over the physically-resolved subset, labeled as such (constraint 19)."""
     row = conn.execute(
         """SELECT
-             SUM(CASE WHEN duration_minutes <= ? THEN 1 ELSE 0 END) AS within,
+             SUM(CASE WHEN duration_minutes <= %s THEN 1 ELSE 0 END) AS within,
              COUNT(*) AS resolved
            FROM incidents WHERE event_observed = 1 AND admin_close = 0""",
         (threshold_minutes,),
