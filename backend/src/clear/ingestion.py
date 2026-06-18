@@ -115,11 +115,35 @@ def _flush_batch(conn, batch: list[dict[str, Any]], *, settings) -> tuple[int, i
     conn.commit()
     return (0, 0)
 
+def _maybe_enrich_weather(raw: dict, settings) -> None:
+    """Phase 1: fill rainfall_mm from Open-Meteo when enabled and not already supplied. Any
+    failure leaves rainfall_mm untouched (-> schema default 0.0), so /ingest never blocks on
+    weather and flag-off behavior is identical to today."""
+    if not settings.weather_enabled:
+        return
+    existing = raw.get("rainfall_mm")
+    try:
+        if existing is not None and float(existing) > 0:
+            return  # caller already supplied a real reading; don't override
+    except (TypeError, ValueError):
+        pass
+    from .weather import rainfall_for  # lazy: no cost when disabled
+    lat, lon = raw.get("latitude"), raw.get("longitude")
+    try:
+        lat_f = float(lat) if lat is not None else None
+        lon_f = float(lon) if lon is not None else None
+    except (TypeError, ValueError):
+        return
+    mm = rainfall_for(lat_f, lon_f, parse_utc(raw.get("start_datetime")))
+    if mm and mm > 0:
+        raw["rainfall_mm"] = mm
+
 def ingest_one(conn, raw: dict, *, settings=None, commit: bool = True) -> dict:
     """Validate + idempotently store ONE raw incident (used by the live /ingest and
     /citizen/report endpoints). Bulk CSV loads go through ingest_csv, which batches inserts.
     Bounded retries on transient storage errors, then dead-letter."""
     settings = settings or get_settings()
+    _maybe_enrich_weather(raw, settings)
     row, err = _prepare_row(raw)
     if err is not None:
         # Schema errors are not transient: dead-letter immediately, no pointless retries.

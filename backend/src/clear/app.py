@@ -389,6 +389,24 @@ def create_app() -> FastAPI:
         finally:
             conn.close()
 
+    @app.get("/admin/drift")
+    def admin_drift(scope: str = Depends(require_scope("operator"))) -> dict:
+        from .monitor import drift_report
+        return drift_report()
+
+    @app.post("/admin/retrain")
+    def admin_retrain(
+        model: str = "clearance",
+        min_improvement: float = 0.0,
+        force: bool = False,
+        scope: str = Depends(require_scope("operator")),
+    ) -> dict:
+        from .retrain import auto_cycle
+        result = auto_cycle(model, min_rel_improvement=min_improvement, force=force)
+        if result.get("promoted"):
+            _load_models(app)  # hot-swap the new model into THIS worker's app.state
+        return result
+
     return app
 
 

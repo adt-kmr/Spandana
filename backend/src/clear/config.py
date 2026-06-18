@@ -42,6 +42,14 @@ class Settings(BaseSettings):
     max_clearance_minutes: float = 1440.0
     drift_psi_threshold: float = 0.2
 
+    # --- Phase 1: live weather enrichment (Open-Meteo, free, keyless) ---
+    # Flag OFF by default => byte-for-byte the current backend. Set CLEAR_WEATHER_ENABLED=1
+    # to populate rainfall_mm from real data.
+    weather_enabled: bool = False
+    weather_timeout_seconds: float = 2.5
+    weather_archive_url: str = "https://archive-api.open-meteo.com/v1/archive"
+    weather_forecast_url: str = "https://api.open-meteo.com/v1/forecast"
+
     @property
     def ist_tz(self) -> timezone:
         return timezone(timedelta(minutes=self.ist_offset_minutes))

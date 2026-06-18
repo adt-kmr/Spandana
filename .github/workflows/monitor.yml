@@ -1,0 +1,15 @@
+name: clear-drift-monitor
+on:
+  schedule:
+    - cron: "0 */6 * * *"   # every 6h
+  workflow_dispatch: {}
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          curl -fsS -X GET "$CLEAR_API_BASE/admin/drift" \
+            -H "Authorization: Bearer $CLEAR_OPERATOR_TOKEN"
+        env:
+          CLEAR_API_BASE: ${{ secrets.CLEAR_API_BASE }}
+          CLEAR_OPERATOR_TOKEN: ${{ secrets.CLEAR_OPERATOR_TOKEN }}
