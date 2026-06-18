@@ -83,24 +83,66 @@ def incident_exists(conn: psycopg.Connection, event_id: str) -> bool:
         "SELECT 1 FROM incidents WHERE event_id = %s", (event_id,)
     ).fetchone() is not None
 
+# Shared INSERT used by BOTH the single-row and bulk paths so the column list and placeholders
+# can never drift apart. Named placeholders (%(name)s) let executemany reuse one prepared
+# statement across every row in a batch.
+_INSERT_INCIDENT_SQL = """INSERT INTO incidents (event_id, payload_json, event_cause, corridor,
+    priority, requires_road_closure, start_ist, resolved_ist, closed_ist, duration_minutes,
+    event_observed, admin_close, junction_node, latitude, longitude, status, ingested_at)
+    VALUES (%(event_id)s,%(payload_json)s,%(event_cause)s,%(corridor)s,%(priority)s,
+    %(requires_road_closure)s,%(start_ist)s,%(resolved_ist)s,%(closed_ist)s,
+    %(duration_minutes)s,%(event_observed)s,%(admin_close)s,%(junction_node)s,
+    %(latitude)s,%(longitude)s,%(status)s,%(ingested_at)s)
+    ON CONFLICT (event_id) DO NOTHING"""
+
 def insert_incident(conn: psycopg.Connection, row: dict[str, Any], *, commit: bool = True) -> bool:
     """Idempotent insert keyed on event_id (constraint 8). Returns True if newly written.
     ON CONFLICT DO NOTHING makes a duplicate a single round-trip; rowcount is 1 for a new
     write, 0 for a skip. commit=False lets bulk ingest batch many rows per transaction."""
-    cur = conn.execute(
-        """INSERT INTO incidents (event_id, payload_json, event_cause, corridor, priority,
-           requires_road_closure, start_ist, resolved_ist, closed_ist, duration_minutes,
-           event_observed, admin_close, junction_node, latitude, longitude, status, ingested_at)
-           VALUES (%(event_id)s,%(payload_json)s,%(event_cause)s,%(corridor)s,%(priority)s,
-           %(requires_road_closure)s,%(start_ist)s,%(resolved_ist)s,%(closed_ist)s,
-           %(duration_minutes)s,%(event_observed)s,%(admin_close)s,%(junction_node)s,
-           %(latitude)s,%(longitude)s,%(status)s,%(ingested_at)s)
-           ON CONFLICT (event_id) DO NOTHING""",
-        {**row, "ingested_at": _now()},
-    )
+    cur = conn.execute(_INSERT_INCIDENT_SQL, {**row, "ingested_at": _now()})
     if commit:
         conn.commit()
     return cur.rowcount > 0
+
+def insert_incidents_batch(
+    conn: psycopg.Connection, rows: list[dict[str, Any]], *, commit: bool = True
+) -> tuple[int, int]:
+    """Bulk-insert many incidents in ~ONE network round-trip via executemany.
+
+    Inserting row-by-row over the network to Neon costs one round-trip PER row (~8k just to
+    seed the dataset), which is why the first seed crawled. psycopg3's executemany() pipelines
+    the whole batch to the server in a single exchange, collapsing those round-trips into one.
+
+    Returns (written, duplicates). Because ON CONFLICT DO NOTHING silently swallows duplicates,
+    we pre-resolve which event_ids already exist (one round-trip) and de-dup within the batch so
+    the written/duplicate counts stay exact. Insertion order is preserved."""
+    if not rows:
+        return (0, 0)
+    ids = [r["event_id"] for r in rows]
+    existing = {
+        rec["event_id"]
+        for rec in conn.execute(
+            "SELECT event_id FROM incidents WHERE event_id = ANY(%s)", (ids,)
+        ).fetchall()
+    }
+    new_rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for r in rows:
+        eid = r["event_id"]
+        if eid in existing or eid in seen:
+            continue
+        seen.add(eid)
+        new_rows.append(r)
+    if new_rows:
+        ts = _now()
+        params = [{**r, "ingested_at": ts} for r in new_rows]
+        # executemany() uses libpq pipeline mode internally (psycopg 3.1+): all rows are sent
+        # before results are read, so the batch costs ~one round-trip instead of len(rows).
+        with conn.cursor() as cur:
+            cur.executemany(_INSERT_INCIDENT_SQL, params)
+    if commit:
+        conn.commit()
+    return (len(new_rows), len(rows) - len(new_rows))
 
 def insert_dead_letter(conn, raw, error, attempts, *, commit: bool = True) -> None:
     conn.execute(
