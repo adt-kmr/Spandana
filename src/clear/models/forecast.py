@@ -1,7 +1,5 @@
 """3-hour corridor nowcast: short-horizon incident-rate risk (constraint 6).
-
-Strictly a 3-hour-ahead nowcast. No long-horizon / multi-year forecasting anywhere.
-"""
+Strictly a 3-hour-ahead nowcast. No long-horizon / multi-year forecasting anywhere."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -10,12 +8,14 @@ from typing import Optional
 import joblib
 import numpy as np
 import pandas as pd
-from lightgbm import LGBMRegressor
+from lightgbm import LGBMRegressor, early_stopping
+from sklearn.model_selection import train_test_split
 
 from ..config import get_settings
 
 MODEL_NAME = "forecast"
 _FEATURES = ["lag1", "lag2", "lag3", "roll3", "hour", "dow", "corridor_freq"]
+
 
 def hourly_counts(frame: pd.DataFrame) -> pd.DataFrame:
     """Per-corridor hourly incident counts, gap-filled with zeros."""
@@ -37,6 +37,7 @@ def hourly_counts(frame: pd.DataFrame) -> pd.DataFrame:
         panels.append(g[["corridor", "hour_bucket", "count"]])
     return pd.concat(panels, ignore_index=True)
 
+
 def _supervised(panel: pd.DataFrame, horizon: int, freq_map: dict) -> pd.DataFrame:
     rows = []
     for corridor, g in panel.groupby("corridor"):
@@ -57,6 +58,7 @@ def _supervised(panel: pd.DataFrame, horizon: int, freq_map: dict) -> pd.DataFra
                 }
             )
     return pd.DataFrame(rows)
+
 
 class ForecastModel:
     def __init__(self, reg, freq_map: dict, scale: float, horizon: int, version: str):
@@ -84,11 +86,28 @@ class ForecastModel:
         if sup.empty:
             raise ValueError("not enough history to build 3h targets")
         X, y = sup[_FEATURES], sup["target"]
+        # n_jobs=-1 uses all cores; force_col_wise=True skips LightGBM's per-fit row/col-wise
+        # probe (and silences its overhead warning) since our feature matrix is narrow. (P4)
         reg = LGBMRegressor(
             n_estimators=300, learning_rate=0.05, num_leaves=31,
-            random_state=get_settings().random_seed, n_jobs=1, verbose=-1,
+            random_state=get_settings().random_seed, n_jobs=-1,
+            force_col_wise=True, verbose=-1,
         )
-        reg.fit(X, y)
+        # Early stopping on a held-out split keeps the tree count honest (stops once the
+        # validation L2 plateaus) instead of always paying for all 300 rounds; guarded so
+        # tiny datasets still train on the full frame. (P4)
+        if len(sup) >= 200:
+            X_tr, X_val, y_tr, y_val = train_test_split(
+                X, y, test_size=0.15, random_state=get_settings().random_seed
+            )
+            reg.fit(
+                X_tr, y_tr,
+                eval_set=[(X_val, y_val)],
+                eval_metric="l2",
+                callbacks=[early_stopping(stopping_rounds=30, verbose=False)],
+            )
+        else:
+            reg.fit(X, y)
         scale = float(np.percentile(np.clip(reg.predict(X), 0, None), 95))
         return cls(reg, freq_map, scale, horizon, version)
 

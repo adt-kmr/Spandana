@@ -1,13 +1,12 @@
 """FastAPI app: ingest -> infer -> output-validate -> serve, with role-scoped access.
-
 Models are loaded once at startup into app.state; a missing model degrades gracefully
-(constraint 13) instead of crashing the API.
-"""
+(constraint 13) instead of crashing the API."""
 from __future__ import annotations
 
 import json
 import re
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Optional
 
@@ -38,6 +37,7 @@ _INJECTION_PATTERNS = re.compile(
     re.IGNORECASE,
 )
 
+
 def sanitize_text(text: Optional[str], max_len: int = 1000) -> str:
     """Prompt-injection guard for free text before any downstream LLM use (constraint 16)."""
     if not text:
@@ -45,18 +45,22 @@ def sanitize_text(text: Optional[str], max_len: int = 1000) -> str:
     cleaned = text.replace("\x00", " ").strip()[:max_len]
     return _INJECTION_PATTERNS.sub("[redacted]", cleaned)
 
+
 class DispatchUnit(BaseModel):
     unit_id: str
     lat: float
     lon: float
 
+
 class DispatchRequest(BaseModel):
     units: list[DispatchUnit] = Field(default_factory=list)
     max_incidents: int = 10
 
+
 class ConfirmRequest(BaseModel):
     recommendation_id: int
     operator_note: str = ""
+
 
 class CitizenReport(BaseModel):
     corridor: str = "unknown"
@@ -65,11 +69,11 @@ class CitizenReport(BaseModel):
     description: str = ""
     event_cause: str = "others"
 
+
 def _load_models(app: FastAPI) -> None:
     from .models.clearance import ClearanceModel
     from .models.forecast import ForecastModel
     from .models.severity import SeverityModel
-
     for attr, loader in (
         ("severity", SeverityModel.load),
         ("clearance", ClearanceModel.load),
@@ -81,6 +85,18 @@ def _load_models(app: FastAPI) -> None:
             setattr(app.state, attr, None)
             log.warning("model '%s' unavailable, degrading: %s", attr, exc)
 
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    # Lifespan replaces the deprecated @app.on_event("startup"). Initialize the DB schema and
+    # load models ONCE before the app accepts traffic; models live on app.state so every
+    # request reuses the in-memory estimators instead of re-reading them from disk. (P3)
+    db.init_db()
+    _load_models(app)
+    yield
+    # No teardown: SQLite connections are opened per-request and closed in each handler.
+
+
 def _incident_record(event_id: str) -> dict:
     conn = db.get_conn()
     try:
@@ -90,6 +106,7 @@ def _incident_record(event_id: str) -> dict:
     if row is None:
         raise HTTPException(status_code=404, detail="incident not found")
     return json.loads(row["payload_json"])
+
 
 def _run_inference(app: FastAPI, conn, payload: dict) -> None:
     """Best-effort severity+clearance inference at ingest; validated before persist."""
@@ -109,13 +126,12 @@ def _run_inference(app: FastAPI, conn, payload: dict) -> None:
         except Exception as exc:  # noqa: BLE001
             log.warning("clearance inference skipped for %s: %s", event_id, exc)
 
-def create_app() -> FastAPI:
-    app = FastAPI(title="CLEAR — Clearance & Logistics Engine for Authority Response")
-    db.init_db()
 
-    @app.on_event("startup")
-    def _startup() -> None:
-        _load_models(app)
+def create_app() -> FastAPI:
+    app = FastAPI(
+        title="CLEAR — Clearance & Logistics Engine for Authority Response",
+        lifespan=_lifespan,
+    )
 
     @app.get("/healthz")
     def healthz() -> dict:
@@ -217,8 +233,14 @@ def create_app() -> FastAPI:
             conn.close()
 
     @app.get("/hotspots")
-    def hotspots(scope: str = Depends(require_scope("operator"))) -> dict:
-        return hotspot_batch()
+    def hotspots(
+        min_size: Optional[int] = None,
+        limit: Optional[int] = None,
+        scope: str = Depends(require_scope("operator")),
+    ) -> dict:
+        # min_size / limit trim the payload server-side: the full batch can emit hundreds of
+        # clusters, so callers can request only clusters of >= min_size and cap the count. (P5)
+        return hotspot_batch(min_size=min_size, limit=limit)
 
     @app.post("/dispatch/suggest")
     def dispatch_suggest_endpoint(
@@ -310,5 +332,6 @@ def create_app() -> FastAPI:
         return {"report_accepted": True, **result}
 
     return app
+
 
 app = create_app()
