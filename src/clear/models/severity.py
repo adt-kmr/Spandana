@@ -15,13 +15,17 @@ from ..preprocessing import prepare_records
 from ..schema import EVENT_CAUSES, SEVERITY_BANDS
 
 MODEL_NAME = "severity"
+
+# NOTE: priority_ord is intentionally EXCLUDED from the feature set. On the real dataset the
+# severity label falls back to `priority` (there is no independent severity_reported column),
+# so using priority_ord as a feature would leak the label and the model would just echo
+# priority. Severity is instead learned from incident characteristics. (de-leak)
 _FEATURES = [
-    "priority_ord", "closure", "rainfall_mm", "has_vehicle", "lanes_blocked", "cue_count",
+    "closure", "rainfall_mm", "has_vehicle", "lanes_blocked", "cue_count",
 ] + [f"cause_{c}" for c in EVENT_CAUSES]
 
 def _featurize(frame: pd.DataFrame) -> pd.DataFrame:
     feats = pd.DataFrame(index=frame.index)
-    feats["priority_ord"] = frame["priority_ord"].astype(float)
     feats["closure"] = frame["requires_road_closure"].astype(int)
     feats["rainfall_mm"] = frame["rainfall_mm"].astype(float)
     feats["has_vehicle"] = frame["has_vehicle"].astype(int)

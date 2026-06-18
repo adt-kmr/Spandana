@@ -26,12 +26,57 @@ EVENT_CAUSES: list[str] = [
     "breakdown", "accident", "tree_fall", "water_logging", "pot_holes",
     "public_event", "others",
 ]
+
+# Real exports label causes differently from our canonical set (the anonymized ASTraM CSV
+# uses "vehicle_breakdown"). Map known variants onto canonical causes, then fall back to
+# keyword matching, so the SAME normalization serves synthetic and real data.
+CAUSE_ALIASES: dict[str, str] = {
+    "vehicle_breakdown": "breakdown",
+    "breakdown": "breakdown",
+    "road_accident": "accident",
+    "accident": "accident",
+    "tree_fall": "tree_fall",
+    "tree_fallen": "tree_fall",
+    "water_logging": "water_logging",
+    "waterlogging": "water_logging",
+    "flooding": "water_logging",
+    "pot_holes": "pot_holes",
+    "potholes": "pot_holes",
+    "pothole": "pot_holes",
+    "public_event": "public_event",
+}
+
+_CAUSE_KEYWORDS: list[tuple[str, str]] = [
+    ("breakdown", "breakdown"),
+    ("accident", "accident"),
+    ("collision", "accident"),
+    ("tree", "tree_fall"),
+    ("water", "water_logging"),
+    ("flood", "water_logging"),
+    ("pot", "pot_holes"),
+    ("event", "public_event"),
+    ("procession", "public_event"),
+]
+
+def normalize_cause(value: object) -> str:
+    """Map a raw event_cause onto a canonical EVENT_CAUSES value (exact, alias, keyword, else others)."""
+    s = str(value or "").strip().lower().replace(" ", "_").replace("-", "_")
+    if s in EVENT_CAUSES:
+        return s
+    if s in CAUSE_ALIASES:
+        return CAUSE_ALIASES[s]
+    for keyword, canonical in _CAUSE_KEYWORDS:
+        if keyword in s:
+            return canonical
+    return "others"
+
 PRIORITIES: list[str] = ["low", "medium", "high", "critical"]
 PRIORITY_ORD: dict[str, int] = {p: i for i, p in enumerate(PRIORITIES)}
 SEVERITY_BANDS: list[str] = ["low", "medium", "high", "critical"]
 
 class IncidentIn(BaseModel):
-    """Validated inbound incident. Timestamps are UTC (converted to IST downstream)."""
+    """Validated inbound incident. Datetimes may arrive as Postgres timestamptz text; they are
+    parsed leniently (see _parse_datetimes) and stored tz-aware."""
 
     event_id: str = Field(min_length=1)
     start_datetime: datetime
@@ -39,7 +84,6 @@ class IncidentIn(BaseModel):
     corridor: str = "unknown"
     latitude: float
     longitude: float
-
     created_datetime: Optional[datetime] = None
     resolved_datetime: Optional[datetime] = None
     closed_datetime: Optional[datetime] = None
@@ -58,22 +102,25 @@ class IncidentIn(BaseModel):
     severity_reported: Optional[str] = None
 
     @field_validator(
-        "created_datetime", "resolved_datetime", "closed_datetime", mode="before"
+        "start_datetime", "created_datetime", "resolved_datetime", "closed_datetime",
+        mode="before",
     )
     @classmethod
-    def _empty_to_none(cls, v: object) -> object:
-        # CSVs are read with keep_default_na=False, so missing cells arrive as "".
-        # Empty/whitespace strings must become None or Pydantic rejects them as datetimes,
-        # which would dead-letter every right-censored row (the ~94% with no resolution).
-        if v is None or (isinstance(v, str) and v.strip() == ""):
-            return None
-        return v
+    def _parse_datetimes(cls, v: object) -> object:
+        # Real exports write Postgres timestamptz text ("2024-03-07 17:01:48.111+00") and the
+        # literal "NULL" for missing values. Pydantic's native parser rejects the short "+00"
+        # offset and "NULL", which dead-letters every row. Route through parse_utc (dateutil-
+        # based, the SAME parser training uses) so ingestion and training agree: it returns a
+        # tz-aware datetime, or None for missing/sentinel values. Lazy import breaks the
+        # schema <-> preprocessing import cycle.
+        from .preprocessing import parse_utc
+
+        return parse_utc(v)
 
     @field_validator("event_cause", mode="before")
     @classmethod
     def _norm_cause(cls, v: object) -> str:
-        s = str(v or "").strip().lower().replace(" ", "_")
-        return s if s in EVENT_CAUSES else "others"
+        return normalize_cause(v)
 
     @field_validator("priority", mode="before")
     @classmethod

@@ -9,9 +9,10 @@ from typing import Any, Optional
 import numpy as np
 import pandas as pd
 from dateutil import parser as dtparser
+from sklearn.neighbors import BallTree
 
 from .config import get_settings
-from .schema import EVENT_CAUSES, PRIORITY_ORD
+from .schema import PRIORITY_ORD, normalize_cause
 
 CUE_WORDS = (
     "accident", "collision", "overturn", "fire", "injury", "injured", "blocked",
@@ -27,12 +28,39 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     ]
     return out
 
+# Real-world datasets (e.g. the anonymized ASTraM export) name columns differently
+# from our canonical schema. Map known aliases onto canonical names so the SAME
+# pipeline ingests both the synthetic CSV and a real export with no per-source code.
+COLUMN_ALIASES: dict[str, str] = {
+    "id": "event_id",
+    "created_date": "created_datetime",
+}
+
+def apply_column_aliases(df: pd.DataFrame) -> pd.DataFrame:
+    """Rename known source-specific columns to canonical names (run after normalize_columns).
+
+    Only renames when the alias is present AND the canonical target is absent, so a real
+    canonical column is never clobbered.
+    """
+    renames = {
+        src: dst
+        for src, dst in COLUMN_ALIASES.items()
+        if src in df.columns and dst not in df.columns
+    }
+    return df.rename(columns=renames) if renames else df
+
+# Real exports use literal sentinel strings for missing values (the anonymized ASTraM CSV
+# writes "NULL"). With keep_default_na=False these survive as text, so we normalize them to
+# None everywhere - otherwise parse_utc("NULL") crashes and validators choke on junk.
+# Compared case-insensitively after stripping.
+NULL_SENTINELS = frozenset({"", "null", "nan", "none", "na", "n/a"})
+
 def _clean(v: Any) -> Optional[Any]:
     if v is None:
         return None
     if isinstance(v, float) and math.isnan(v):
         return None
-    if isinstance(v, str) and v.strip() == "":
+    if isinstance(v, str) and v.strip().lower() in NULL_SENTINELS:
         return None
     try:
         if pd.isna(v):
@@ -41,14 +69,28 @@ def _clean(v: Any) -> Optional[Any]:
         pass
     return v
 
+def scrub_sentinels(df: pd.DataFrame) -> pd.DataFrame:
+    """Replace literal missing-value sentinels (e.g. "NULL", "NA") with None across every cell.
+
+    Run right after normalize_columns + apply_column_aliases so all downstream typing, date
+    parsing, and validation treat sentinels as truly missing instead of as the string "NULL".
+    """
+    return df.map(_clean)
+
 def parse_utc(value: Any) -> Optional[datetime]:
-    """Parse a timestamp and return tz-aware UTC. Naive inputs are assumed UTC."""
+    """Parse a timestamp and return tz-aware UTC.
+
+    Real exports may store tz-aware Postgres timestamptz text (e.g. "...+00") OR naive local
+    timestamps. tz-aware inputs keep their own offset; naive inputs are localized to IST (the
+    operational timezone) before converting to UTC. Everything downstream treats time as UTC;
+    `to_ist` re-localizes for hour-of-day features, giving exactly one IST shift. (constraint 4)
+    """
     value = _clean(value)
     if value is None:
         return None
     dt = value if isinstance(value, datetime) else dtparser.isoparse(str(value))
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=get_settings().ist_tz)
     return dt.astimezone(timezone.utc)
 
 def to_ist(dt_utc: Optional[datetime]) -> Optional[datetime]:
@@ -83,16 +125,35 @@ def build_osm_node_grid() -> list[tuple[str, float, float]]:
     return nodes
 
 _NODES = build_osm_node_grid()
+# Index the node grid ONCE in a BallTree (compiled haversine metric, radians) so snapping is
+# O(log M) per point instead of a Python loop over all ~576 nodes. For N incidents this turns
+# an O(N*M) brute force (~millions of haversine calls) into O(N log M). Tree is built a single
+# time at import; `snap_junctions` runs one vectorized batch query for the whole frame. (perf)
+_NODE_IDS: list[str] = [nid for nid, _, _ in _NODES]
+_NODE_COORDS_RAD = np.radians([[lat, lon] for _, lat, lon in _NODES])
+_NODE_TREE = BallTree(_NODE_COORDS_RAD, metric="haversine")
 
 def snap_junction(lat: Optional[float], lon: Optional[float]) -> Optional[str]:
+    """Snap one (lat, lon) to the nearest cached OSM node id, or None if coords are missing."""
     if lat is None or lon is None:
         return None
-    best_id, best_d = None, float("inf")
-    for nid, nlat, nlon in _NODES:
-        d = haversine_m(lat, lon, nlat, nlon)
-        if d < best_d:
-            best_id, best_d = nid, d
-    return best_id
+    _, idx = _NODE_TREE.query(np.radians([[lat, lon]]), k=1)
+    return _NODE_IDS[int(idx[0][0])]
+
+def snap_junctions(lats: pd.Series | np.ndarray, lons: pd.Series | np.ndarray) -> list[Optional[str]]:
+    """Vectorized snap: ONE BallTree query for all points. Missing coords map to None."""
+    lat_arr = pd.to_numeric(pd.Series(lats).reset_index(drop=True), errors="coerce")
+    lon_arr = pd.to_numeric(pd.Series(lons).reset_index(drop=True), errors="coerce")
+    valid = lat_arr.notna() & lon_arr.notna()
+    result: list[Optional[str]] = [None] * len(lat_arr)
+    if valid.any():
+        coords = np.radians(
+            np.column_stack([lat_arr[valid].to_numpy(), lon_arr[valid].to_numpy()])
+        )
+        _, idx = _NODE_TREE.query(coords, k=1)
+        for pos, node_pos in zip(np.flatnonzero(valid.to_numpy()), idx[:, 0]):
+            result[int(pos)] = _NODE_IDS[int(node_pos)]
+    return result
 
 def clearance_label(
     start: Optional[datetime],
@@ -147,10 +208,7 @@ def prepare_records(records: list[dict], as_of: Optional[datetime] = None) -> pd
 
     out = pd.DataFrame(index=df.index)
     out["event_id"] = _col(df, "event_id")
-    out["event_cause"] = (
-        _col(df, "event_cause", "others").astype(str).str.strip().str.lower().str.replace(" ", "_")
-    )
-    out.loc[~out["event_cause"].isin(EVENT_CAUSES), "event_cause"] = "others"
+    out["event_cause"] = _col(df, "event_cause", "others").map(normalize_cause)
     out["corridor"] = _col(df, "corridor", "unknown").fillna("unknown")
     out["zone"] = _col(df, "zone", "unknown")
     out["priority"] = _col(df, "priority", "medium").astype(str).str.lower()
@@ -163,7 +221,12 @@ def prepare_records(records: list[dict], as_of: Optional[datetime] = None) -> pd
     out["lanes_blocked"] = pd.to_numeric(_col(df, "lanes_blocked", 0), errors="coerce").fillna(0)
     out["description"] = _col(df, "description", "").fillna("").astype(str)
     out["comment"] = _col(df, "comment", "").fillna("").astype(str)
-    out["severity_reported"] = _col(df, "severity_reported")
+    # Severity label: the real ASTraM export has no `severity_reported` column. Fall back to
+    # `priority` (identical bands: low/medium/high/critical) so the severity model trains on a
+    # real operational-urgency label instead of degrading to 503. Rows whose label is not a
+    # valid severity band are ignored by the trainer.
+    reported_sev = _col(df, "severity_reported").map(_clean)
+    out["severity_reported"] = reported_sev.where(reported_sev.notna(), out["priority"])
 
     # Null-safe vehicle features, gated to breakdown rows only (constraint 17).
     veh_type = _col(df, "veh_type")
@@ -199,9 +262,7 @@ def prepare_records(records: list[dict], as_of: Optional[datetime] = None) -> pd
     out["event_observed"] = observed
     out["admin_close"] = admin
 
-    out["junction_node"] = [
-        snap_junction(la, lo) for la, lo in zip(out["latitude"], out["longitude"])
-    ]
+    out["junction_node"] = snap_junctions(out["latitude"], out["longitude"])
     out["cue_count"] = (out["description"] + " " + out["comment"]).map(count_cues)
     out["priority_ord"] = out["priority"].map(PRIORITY_ORD).fillna(1).astype(int)
     return out
@@ -216,6 +277,7 @@ def _to_bool(v: Any) -> Optional[bool]:
 
 def load_and_prepare(csv_path: str, as_of: Optional[datetime] = None) -> pd.DataFrame:
     raw = pd.read_csv(csv_path, dtype=str, keep_default_na=False)
+    raw = scrub_sentinels(apply_column_aliases(normalize_columns(raw)))
     records = raw.to_dict(orient="records")
     if as_of is None:
         starts = [parse_utc(r.get("start_datetime")) for r in records]
