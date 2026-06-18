@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # The 46-column Bengaluru incident schema the datagen emits and ingestion accepts.
 # Intentionally includes a capitalized "Pot_holes" to exercise normalization (constraint 17).
@@ -28,8 +28,10 @@ EVENT_CAUSES: list[str] = [
 ]
 
 # Real exports label causes differently from our canonical set (the anonymized ASTraM CSV
-# uses "vehicle_breakdown"). Map known variants onto canonical causes, then fall back to
-# keyword matching, so the SAME normalization serves synthetic and real data.
+# uses "vehicle_breakdown", "construction", "vip_movement", ...). Map known variants onto
+# canonical causes, then fall back to keyword matching, so the SAME normalization serves
+# synthetic and real data. normalize_cause() lowercases first, so capitalized variants
+# ("Debris", "Fog / Low Visibility") collapse onto their lowercase keys automatically.
 CAUSE_ALIASES: dict[str, str] = {
     "vehicle_breakdown": "breakdown",
     "breakdown": "breakdown",
@@ -44,6 +46,17 @@ CAUSE_ALIASES: dict[str, str] = {
     "potholes": "pot_holes",
     "pothole": "pot_holes",
     "public_event": "public_event",
+    # --- real ASTraM export variants (from event_cause value counts) ---
+    "procession": "public_event",
+    "vip_movement": "public_event",
+    "protest": "public_event",
+    "construction": "others",
+    "road_conditions": "others",
+    "road_condition": "others",
+    "congestion": "others",
+    "debris": "others",
+    "test_demo": "others",
+    "fog": "others",
 }
 
 _CAUSE_KEYWORDS: list[tuple[str, str]] = [
@@ -56,6 +69,8 @@ _CAUSE_KEYWORDS: list[tuple[str, str]] = [
     ("pot", "pot_holes"),
     ("event", "public_event"),
     ("procession", "public_event"),
+    ("protest", "public_event"),
+    ("vip", "public_event"),
 ]
 
 def normalize_cause(value: object) -> str:
@@ -76,7 +91,9 @@ SEVERITY_BANDS: list[str] = ["low", "medium", "high", "critical"]
 
 class IncidentIn(BaseModel):
     """Validated inbound incident. Datetimes may arrive as Postgres timestamptz text; they are
-    parsed leniently (see _parse_datetimes) and stored tz-aware."""
+    parsed leniently (see _parse_datetimes) and stored tz-aware. Only event_id/start_datetime/
+    latitude/longitude are truly required; every other field has a default that is substituted
+    when the export sends an explicit null (see _none_to_field_default)."""
 
     event_id: str = Field(min_length=1)
     start_datetime: datetime
@@ -101,6 +118,29 @@ class IncidentIn(BaseModel):
     status: str = "open"
     severity_reported: Optional[str] = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def _none_to_field_default(cls, data: object) -> object:
+        # Real exports send an explicit null for most columns (comment, zone, corridor,
+        # status, requires_road_closure, ...). In Pydantic v2 a field default only applies
+        # when the KEY IS ABSENT -- a present-but-None value is validated against the field
+        # type and a non-Optional str/bool/number field rejects it, dead-lettering the row.
+        # Substitute the declared default for any present-but-None field that has a concrete
+        # (non-None) default. Truly required fields (no default) are left as-is so genuinely
+        # missing event_id/start_datetime/lat/lon still fail loudly. Optional[...] = None
+        # fields keep their None (e.g. datetimes routed through _parse_datetimes).
+        if not isinstance(data, dict):
+            return data
+        out = dict(data)
+        for name, field in cls.model_fields.items():
+            if (
+                out.get(name) is None
+                and not field.is_required()
+                and field.default is not None
+            ):
+                out[name] = field.default
+        return out
+
     @field_validator(
         "start_datetime", "created_datetime", "resolved_datetime", "closed_datetime",
         mode="before",
@@ -114,7 +154,6 @@ class IncidentIn(BaseModel):
         # tz-aware datetime, or None for missing/sentinel values. Lazy import breaks the
         # schema <-> preprocessing import cycle.
         from .preprocessing import parse_utc
-
         return parse_utc(v)
 
     @field_validator("event_cause", mode="before")
