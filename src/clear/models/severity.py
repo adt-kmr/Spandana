@@ -28,7 +28,6 @@ _CANDIDATE_FEATURES = [
     "lat", "lon", "hour_sin", "hour_cos", "dow_sin", "dow_cos", "corridor_freq",
 ] + _CAUSE_FEATURES
 
-
 def _featurize(frame: pd.DataFrame, freq_map: dict, lat_fill: float, lon_fill: float) -> pd.DataFrame:
     feats = pd.DataFrame(index=frame.index)
     feats["closure"] = frame["requires_road_closure"].astype(int)
@@ -48,7 +47,6 @@ def _featurize(frame: pd.DataFrame, freq_map: dict, lat_fill: float, lon_fill: f
     for c in EVENT_CAUSES:
         feats[f"cause_{c}"] = (frame["event_cause"] == c).astype(int)
     return feats[_CANDIDATE_FEATURES]
-
 
 class SeverityModel:
     def __init__(self, clf, columns, freq_map, lat_fill, lon_fill, version):
@@ -101,10 +99,13 @@ class SeverityModel:
             random_state=seed, n_jobs=-1, verbose=-1,
         )
         # Calibrated probabilities so reported confidence is meaningful (constraint 5). Fold
-        # count is bounded by the rarest class; isotonic only when there is plenty of data.
+        # count is bounded by the rarest class. Always use Platt scaling (sigmoid): isotonic
+        # fits a step function that snaps probabilities to exactly 0/1 on larger classes, which
+        # is what pinned reported confidence at a meaningless 1.0. Sigmoid yields smooth,
+        # well-separated probabilities that actually reflect model certainty.
         min_class = int(counts[usable].min())
         cv = max(2, min(3, min_class))
-        method = "isotonic" if min_class >= 1000 else "sigmoid"
+        method = "sigmoid"
         clf = CalibratedClassifierCV(base, method=method, cv=cv)
         clf.fit(X, y)
         return cls(clf, keep, freq_map, lat_fill, lon_fill, version)

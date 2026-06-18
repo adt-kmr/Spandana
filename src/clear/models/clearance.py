@@ -15,7 +15,6 @@ from ..schema import EVENT_CAUSES
 
 MODEL_NAME = "clearance"
 
-
 def _design(frame: pd.DataFrame) -> pd.DataFrame:
     feats = pd.DataFrame(index=frame.index)
     feats["priority_ord"] = frame["priority_ord"].astype(float)
@@ -28,7 +27,6 @@ def _design(frame: pd.DataFrame) -> pd.DataFrame:
         feats[f"cause_{c}"] = (frame["event_cause"] == c).astype(int)
     # Drop zero-variance one-hots so the AFT design matrix stays full-rank.
     return feats.loc[:, feats.nunique() > 1] if len(feats) > 1 else feats
-
 
 class ClearanceModel:
     def __init__(self, aft: WeibullAFTFitter, columns: list[str], version: str):
@@ -54,6 +52,8 @@ class ClearanceModel:
         # The previous code censored every one of them at `cap`, which in the real ASTraM
         # export pinned ~61% of the sample at 1440 and dragged every predicted median to the
         # ceiling. They are informative-missing, not genuinely censored, so we drop them.
+        # (To turn these into PROPER right-censored rows you need each open incident's
+        # age = as_of - start, which is computed in preprocessing, not here.)
         usable = E.eq(1) & T.notna() & (T > 0)
         df = df.loc[usable].copy()
         T = T.loc[usable]
@@ -67,7 +67,14 @@ class ClearanceModel:
         T = T.clip(lower=1.0, upper=cap)
         design = _design(df)
         design = design.assign(T=T.values, E=E.values)
-        aft = WeibullAFTFitter(penalizer=0.1)
+        # penalizer raised 0.1 -> 0.5. With only a few hundred resolved rows and sparse one-hot
+        # cause/closure combos, a weak penalty let a single rare-covariate coefficient blow the
+        # linear predictor up, so predict_percentile extrapolated past `cap` and clamped to 1440
+        # (the median/p90 wall seen in the smoke test). Stronger L2 shrinks those coefficients
+        # toward the baseline hazard, so rare-covariate incidents fall back to a near-global-
+        # median ETA instead of the ceiling. The Weibull shape (spread) is unaffected, so the
+        # P10-P90 interval stays meaningful.
+        aft = WeibullAFTFitter(penalizer=0.5)
         aft.fit(design, duration_col="T", event_col="E")
         cols = [c for c in design.columns if c not in ("T", "E")]
         return cls(aft, cols, version)
