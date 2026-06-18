@@ -1,16 +1,44 @@
-# React + Vite
+# CLEAR Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This is the frontend application for CLEAR (Clearance & Logistics Engine for Authority Response), built with React, TypeScript, Vite, Tailwind CSS, TanStack Query, and MapLibre GL.
 
-Currently, two official plugins are available:
+## Requirements
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Node.js (v18+)
+- The CLEAR Backend running (or accessible via URL)
 
-## React Compiler
+## Environment Variables
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+To connect to the backend, you must configure the following environment variables. Create a `.env.local` file in this directory with the following keys:
 
-## Expanding the ESLint configuration
+```env
+# The base URL of the CLEAR backend
+VITE_CLEAR_API_BASE=http://localhost:8000
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+# Operator token (required for Operator Console access)
+VITE_CLEAR_OPERATOR_TOKEN=your_operator_token
+
+# Citizen token (required for Citizen Portal access)
+VITE_CLEAR_CITIZEN_TOKEN=your_citizen_token
+```
+
+> **Warning**: Never commit real production tokens to version control. The tokens dictate the scope and features visible in the application.
+
+## CORS Configuration
+
+The backend is already configured to allow CORS for `http://localhost:5173`. 
+**If you deploy this frontend to a different URL**, the operator MUST add your deployed origin to the backend's `CLEAR_CORS_ALLOW_ORIGINS` environment variable for the API to function. No code changes are required in the frontend.
+
+## Running Locally
+
+1. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+2. Start the Vite development server:
+   ```bash
+   npm run dev
+   ```
+
+3. Open your browser to `http://localhost:5173`. Depending on the tokens provided in your `.env.local`, you will be routed to either the Operator Console or the Citizen Portal.
