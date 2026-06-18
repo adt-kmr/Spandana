@@ -28,9 +28,11 @@ log = configure_logging()
 # bulk insert still uses ON CONFLICT(event_id) DO NOTHING.
 _COMMIT_BATCH = 1000
 
-def _to_row(payload: IncidentIn) -> dict[str, Any]:
-    prepared = prepare_records([payload.model_dump(mode="json")], as_of=None)
-    p = prepared.iloc[0]
+def _to_row_from_prepared(payload: IncidentIn, p) -> dict[str, Any]:
+    """Build a DB row from a validated payload and its ALREADY-prepared feature row `p` (one row
+    of a prepare_records frame). The single-row and bulk paths both go through here so their
+    output can never drift. resolved_ist/closed_ist come straight from the payload because
+    prepare_records does not emit them - identical to the original _to_row."""
     start_ist = p["start_ist"]
     resolved_ist = to_ist(parse_utc(payload.resolved_datetime)) if payload.resolved_datetime else None
     closed_ist = to_ist(parse_utc(payload.closed_datetime)) if payload.closed_datetime else None
@@ -53,6 +55,12 @@ def _to_row(payload: IncidentIn) -> dict[str, Any]:
         "status": payload.status,
     }
 
+def _to_row(payload: IncidentIn) -> dict[str, Any]:
+    """Single-row shaping (used by the live /ingest + /citizen/report path). Runs the feature
+    pipeline for ONE record; bulk CSV loads use _prepare_rows_bulk to vectorize this."""
+    prepared = prepare_records([payload.model_dump(mode="json")], as_of=None)
+    return _to_row_from_prepared(payload, prepared.iloc[0])
+
 def _prepare_row(raw: dict) -> tuple[Optional[dict[str, Any]], Optional[str]]:
     """Validate + shape one raw record. Returns (row, None) on success, or (None, error) when
     the record is invalid so the caller can dead-letter it. Validation errors are NOT transient,
@@ -62,6 +70,31 @@ def _prepare_row(raw: dict) -> tuple[Optional[dict[str, Any]], Optional[str]]:
     except ValidationError as exc:
         return None, f"validation: {exc.errors()}"
     return _to_row(payload), None
+
+def _prepare_rows_bulk(
+    records: list[dict],
+) -> tuple[list[dict[str, Any]], list[tuple[dict, str]]]:
+    """Vectorized shaping for bulk CSV loads. Validates every raw record, then runs the feature
+    pipeline (prepare_records) ONCE over all valid payloads instead of once per row - this is
+    the hot path that made seeding slow. Returns (rows, errors) where errors is [(raw, message)]
+    for records that failed validation, so the caller can dead-letter them.
+
+    Correctness: prepare_records builds its frame from the payloads in order and preserves that
+    order, so prepared.iloc[i] lines up with payloads[i]; as_of=None matches the original
+    per-row _to_row call exactly (unresolved rows stay right-censored). The resulting rows are
+    therefore identical to looping _prepare_row per record, just far faster."""
+    payloads: list[IncidentIn] = []
+    errors: list[tuple[dict, str]] = []
+    for raw in records:
+        try:
+            payloads.append(IncidentIn.model_validate(raw))
+        except ValidationError as exc:
+            errors.append((raw, f"validation: {exc.errors()}"))
+    if not payloads:
+        return [], errors
+    prepared = prepare_records([p.model_dump(mode="json") for p in payloads], as_of=None)
+    rows = [_to_row_from_prepared(p, prepared.iloc[i]) for i, p in enumerate(payloads)]
+    return rows, errors
 
 def _flush_batch(conn, batch: list[dict[str, Any]], *, settings) -> tuple[int, int]:
     """Bulk-insert a batch with bounded retries + exponential backoff on transient storage
@@ -116,22 +149,19 @@ def ingest_csv(csv_path: str) -> dict:
     try:
         raw = pd.read_csv(csv_path, dtype=str, keep_default_na=False)
         raw = scrub_sentinels(apply_column_aliases(normalize_columns(raw)))
-        written = dup = dead = 0
-        batch: list[dict[str, Any]] = []
-        for rec in raw.to_dict(orient="records"):
-            row, err = _prepare_row(rec)
-            if err is not None:
-                db.insert_dead_letter(conn, rec, err, 1, commit=True)
-                dead += 1
-                continue
-            batch.append(row)
-            if len(batch) >= _COMMIT_BATCH:
-                w, d = _flush_batch(conn, batch, settings=settings)
-                written += w
-                dup += d
-                batch.clear()
-        if batch:  # flush the final partial batch
-            w, d = _flush_batch(conn, batch, settings=settings)
+        records = raw.to_dict(orient="records")
+        # Validate + shape the WHOLE file in one vectorized pass (prepare_records runs once for
+        # all rows, not once per row) before any DB writes.
+        rows, errors = _prepare_rows_bulk(records)
+        dead = 0
+        for bad_raw, err in errors:
+            db.insert_dead_letter(conn, bad_raw, err, 1, commit=False)
+            dead += 1
+        if dead:
+            conn.commit()
+        written = dup = 0
+        for i in range(0, len(rows), _COMMIT_BATCH):  # flush in executemany batches
+            w, d = _flush_batch(conn, rows[i : i + _COMMIT_BATCH], settings=settings)
             written += w
             dup += d
         return {"rows": len(raw), "written": written, "duplicates": dup, "dead_lettered": dead}

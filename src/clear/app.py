@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from . import db
@@ -22,6 +23,7 @@ from .logging_setup import configure_logging
 from .metrics import clearance_prediction_error
 from .models.dispatch import suggest as dispatch_suggest
 from .models.hotspot import run_batch as hotspot_batch
+from .ratelimit import RateLimitMiddleware
 from .validation import (
     OutputValidationError,
     validate_clearance,
@@ -37,7 +39,6 @@ _INJECTION_PATTERNS = re.compile(
     re.IGNORECASE,
 )
 
-
 def sanitize_text(text: Optional[str], max_len: int = 1000) -> str:
     """Prompt-injection guard for free text before any downstream LLM use (constraint 16)."""
     if not text:
@@ -45,22 +46,18 @@ def sanitize_text(text: Optional[str], max_len: int = 1000) -> str:
     cleaned = text.replace("\x00", " ").strip()[:max_len]
     return _INJECTION_PATTERNS.sub("[redacted]", cleaned)
 
-
 class DispatchUnit(BaseModel):
     unit_id: str
     lat: float
     lon: float
 
-
 class DispatchRequest(BaseModel):
     units: list[DispatchUnit] = Field(default_factory=list)
     max_incidents: int = 10
 
-
 class ConfirmRequest(BaseModel):
     recommendation_id: int
     operator_note: str = ""
-
 
 class CitizenReport(BaseModel):
     corridor: str = "unknown"
@@ -68,7 +65,6 @@ class CitizenReport(BaseModel):
     longitude: float
     description: str = ""
     event_cause: str = "others"
-
 
 def _load_models(app: FastAPI) -> None:
     from .models.clearance import ClearanceModel
@@ -85,7 +81,6 @@ def _load_models(app: FastAPI) -> None:
             setattr(app.state, attr, None)
             log.warning("model '%s' unavailable, degrading: %s", attr, exc)
 
-
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     # Lifespan replaces the deprecated @app.on_event("startup"). Initialize the DB schema and
@@ -96,7 +91,6 @@ async def _lifespan(app: FastAPI):
     yield
     # No teardown: SQLite connections are opened per-request and closed in each handler.
 
-
 def _incident_record(event_id: str) -> dict:
     conn = db.get_conn()
     try:
@@ -106,7 +100,6 @@ def _incident_record(event_id: str) -> dict:
     if row is None:
         raise HTTPException(status_code=404, detail="incident not found")
     return json.loads(row["payload_json"])
-
 
 def _run_inference(app: FastAPI, conn, payload: dict) -> None:
     """Best-effort severity+clearance inference at ingest; validated before persist."""
@@ -126,12 +119,34 @@ def _run_inference(app: FastAPI, conn, payload: dict) -> None:
         except Exception as exc:  # noqa: BLE001
             log.warning("clearance inference skipped for %s: %s", event_id, exc)
 
-
 def create_app() -> FastAPI:
     app = FastAPI(
         title="CLEAR — Clearance & Logistics Engine for Authority Response",
         lifespan=_lifespan,
     )
+
+    # --- Cross-cutting middleware (NEW) -------------------------------------------------
+    # Order matters. Starlette runs the LAST-added middleware OUTERMOST, so we add the rate
+    # limiter first (inner) and CORS last (outer). That way: (a) CORS handles the browser
+    # preflight OPTIONS and short-circuits it before the limiter ever sees it, and (b) a 429
+    # from the limiter still travels back out THROUGH CORS, so the browser gets the
+    # Access-Control-Allow-Origin header instead of a opaque CORS failure.
+    settings = get_settings()
+    if settings.rate_limit_enabled:
+        app.add_middleware(
+            RateLimitMiddleware,
+            limit=settings.rate_limit_requests,
+            window_seconds=settings.rate_limit_window_seconds,
+            exempt_paths=("/healthz",),  # never rate-limit health checks
+        )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_credentials=False,  # bearer tokens, not cookies -> no credentialed CORS needed
+        allow_methods=["GET", "POST"],
+        allow_headers=["Authorization", "Content-Type"],
+    )
+    # -----------------------------------------------------------------------------------
 
     @app.get("/healthz")
     def healthz() -> dict:
@@ -332,6 +347,5 @@ def create_app() -> FastAPI:
         return {"report_accepted": True, **result}
 
     return app
-
 
 app = create_app()

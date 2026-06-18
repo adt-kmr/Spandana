@@ -22,6 +22,16 @@ class Settings(BaseSettings):
     random_seed: int = 42
     operator_token: str = "dev-operator-token"
     citizen_token: str = "dev-citizen-token"
+    # Comma-separated browser origins allowed to call the API (CORS). Browser apps served from
+    # another origin are blocked unless their origin is listed here. Override via
+    # CLEAR_CORS_ALLOW_ORIGINS in any deployed environment (add your Vercel/Render frontend URL).
+    # Never use "*" in production.
+    cors_allow_origins: str = "http://localhost:5173,http://localhost:3000"
+    # Rate limiting (fixed window, enforced per worker process). Caps requests per client per
+    # window and returns HTTP 429 beyond that. Tune per environment; disable for load tests.
+    rate_limit_enabled: bool = True
+    rate_limit_requests: int = 120
+    rate_limit_window_seconds: int = 60
     ingest_max_retries: int = 3
     ingest_backoff_base_seconds: float = 0.5
     ist_offset_minutes: int = 330  # +05:30 (constraint 4)
@@ -35,6 +45,11 @@ class Settings(BaseSettings):
     @property
     def ist_tz(self) -> timezone:
         return timezone(timedelta(minutes=self.ist_offset_minutes))
+
+    @property
+    def cors_origins(self) -> list[str]:
+        """Parsed allow-list from the comma-separated cors_allow_origins setting."""
+        return [o.strip() for o in self.cors_allow_origins.split(",") if o.strip()]
 
     def ensure_dirs(self) -> None:
         # Postgres holds incident data now; we still keep local dirs for the raw CSV (ingest
