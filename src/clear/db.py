@@ -51,17 +51,30 @@ CREATE TABLE IF NOT EXISTS junction_cache (
 );
 """
 
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
 
 def get_conn(path: Optional[Path] = None) -> sqlite3.Connection:
     settings = get_settings()
     settings.ensure_dirs()
     conn = sqlite3.connect(str(path or settings.db_path))
     conn.row_factory = sqlite3.Row
+    # Write-throughput pragmas (P2). WAL lets readers and the single writer proceed
+    # concurrently; synchronous=NORMAL is the safe-with-WAL durability level (survives app
+    # crashes; only a power loss exactly at checkpoint risks the last commit); temp_store=
+    # MEMORY keeps temp b-trees off disk; cache_size=-65536 is a ~64 MB page cache (negative
+    # value = KiB) that cuts page faults during bulk ingest; busy_timeout avoids spurious
+    # 'database is locked' errors under WAL.
     conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA synchronous=NORMAL;")
+    conn.execute("PRAGMA temp_store=MEMORY;")
+    conn.execute("PRAGMA cache_size=-65536;")
+    conn.execute("PRAGMA busy_timeout=5000;")
     conn.execute("PRAGMA foreign_keys=ON;")
     return conn
+
 
 def init_db(conn: Optional[sqlite3.Connection] = None) -> None:
     own = conn is None
@@ -73,32 +86,45 @@ def init_db(conn: Optional[sqlite3.Connection] = None) -> None:
         if own:
             conn.close()
 
+
 def incident_exists(conn: sqlite3.Connection, event_id: str) -> bool:
     cur = conn.execute("SELECT 1 FROM incidents WHERE event_id = ?", (event_id,))
     return cur.fetchone() is not None
 
-def insert_incident(conn: sqlite3.Connection, row: dict[str, Any]) -> bool:
-    """Idempotent insert keyed on event_id (constraint 8). Returns True if newly written."""
-    if incident_exists(conn, row["event_id"]):
-        return False
-    conn.execute(
+
+def insert_incident(conn: sqlite3.Connection, row: dict[str, Any], *, commit: bool = True) -> bool:
+    """Idempotent insert keyed on event_id (constraint 8). Returns True if newly written.
+
+    Uses INSERT ... ON CONFLICT(event_id) DO NOTHING so a duplicate is a single round-trip
+    (no separate SELECT), and cur.rowcount distinguishes a new write (1) from a skip (0).
+    Pass commit=False during bulk ingest so many rows share one transaction -- the per-row
+    commit() was the dominant ingest cost.
+    """
+    cur = conn.execute(
         """INSERT INTO incidents (event_id, payload_json, event_cause, corridor, priority,
            requires_road_closure, start_ist, resolved_ist, closed_ist, duration_minutes,
            event_observed, admin_close, junction_node, latitude, longitude, status, ingested_at)
            VALUES (:event_id,:payload_json,:event_cause,:corridor,:priority,
            :requires_road_closure,:start_ist,:resolved_ist,:closed_ist,:duration_minutes,
-           :event_observed,:admin_close,:junction_node,:latitude,:longitude,:status,:ingested_at)""",
+           :event_observed,:admin_close,:junction_node,:latitude,:longitude,:status,:ingested_at)
+           ON CONFLICT(event_id) DO NOTHING""",
         {**row, "ingested_at": _now()},
     )
-    conn.commit()
-    return True
+    if commit:
+        conn.commit()
+    return cur.rowcount > 0
 
-def insert_dead_letter(conn: sqlite3.Connection, raw: dict, error: str, attempts: int) -> None:
+
+def insert_dead_letter(
+    conn: sqlite3.Connection, raw: dict, error: str, attempts: int, *, commit: bool = True
+) -> None:
     conn.execute(
         "INSERT INTO dead_letter (raw_json, error, attempts, created_at) VALUES (?,?,?,?)",
         (json.dumps(raw, default=str), error, attempts, _now()),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
+
 
 def save_prediction(conn, event_id, model, output, version) -> None:
     conn.execute(
@@ -108,6 +134,7 @@ def save_prediction(conn, event_id, model, output, version) -> None:
     )
     conn.commit()
 
+
 def save_recommendation(conn, payload: dict) -> int:
     cur = conn.execute(
         "INSERT INTO recommendations (created_at, payload_json) VALUES (?,?)",
@@ -115,6 +142,7 @@ def save_recommendation(conn, payload: dict) -> int:
     )
     conn.commit()
     return int(cur.lastrowid)
+
 
 def confirm_recommendation(conn, rec_id: int, approval_event: dict) -> bool:
     cur = conn.execute("SELECT 1 FROM recommendations WHERE id = ?", (rec_id,))
@@ -127,6 +155,7 @@ def confirm_recommendation(conn, rec_id: int, approval_event: dict) -> bool:
     conn.commit()
     return True
 
+
 def upsert_corridor_risk(conn, corridor, risk, horizon, stale) -> None:
     conn.execute(
         """INSERT INTO corridor_risk (corridor, as_of, risk, horizon_hours, stale)
@@ -137,9 +166,11 @@ def upsert_corridor_risk(conn, corridor, risk, horizon, stale) -> None:
     )
     conn.commit()
 
+
 def get_last_corridor_risk(conn) -> list[dict]:
     rows = conn.execute("SELECT * FROM corridor_risk").fetchall()
     return [dict(r) for r in rows]
+
 
 def register_model(conn, model, version, stage, path, metrics: dict) -> None:
     conn.execute(
@@ -151,12 +182,14 @@ def register_model(conn, model, version, stage, path, metrics: dict) -> None:
     )
     conn.commit()
 
+
 def set_model_stage(conn, model, version, stage) -> None:
     conn.execute(
         "UPDATE model_registry SET stage = ? WHERE model = ? AND version = ?",
         (stage, model, version),
     )
     conn.commit()
+
 
 def get_models(conn, model: Optional[str] = None) -> list[dict]:
     if model:
@@ -169,12 +202,14 @@ def get_models(conn, model: Optional[str] = None) -> list[dict]:
         ).fetchall()
     return [dict(r) for r in rows]
 
+
 def record_metric(conn, model, metric, value) -> None:
     conn.execute(
         "INSERT INTO correctness_metrics (model, metric, value, created_at) VALUES (?,?,?,?)",
         (model, metric, float(value), _now()),
     )
     conn.commit()
+
 
 def get_metrics(conn) -> list[dict]:
     rows = conn.execute(
@@ -183,15 +218,18 @@ def get_metrics(conn) -> list[dict]:
     ).fetchall()
     return [dict(r) for r in rows]
 
+
 def get_incidents(conn, limit: int = 500) -> list[dict]:
     rows = conn.execute(
         "SELECT * FROM incidents ORDER BY start_ist DESC LIMIT ?", (limit,)
     ).fetchall()
     return [dict(r) for r in rows]
 
+
 def get_incident(conn, event_id: str) -> Optional[dict]:
     row = conn.execute("SELECT * FROM incidents WHERE event_id = ?", (event_id,)).fetchone()
     return dict(row) if row else None
+
 
 def get_active_incidents(conn) -> list[dict]:
     rows = conn.execute(
@@ -199,10 +237,10 @@ def get_active_incidents(conn) -> list[dict]:
     ).fetchall()
     return [dict(r) for r in rows]
 
+
 def recent_hourly_counts(conn, corridor: str, as_of_iso: str, hours: int) -> list[int]:
     """Counts per hour for the `hours` hours ending at as_of (IST strings, lexicographically sortable)."""
     from datetime import timedelta
-
     as_of = datetime.fromisoformat(as_of_iso)
     counts: list[int] = []
     for i in range(hours, 0, -1):
@@ -214,6 +252,7 @@ def recent_hourly_counts(conn, corridor: str, as_of_iso: str, hours: int) -> lis
         )
         counts.append(int(cur.fetchone()["c"]))
     return counts
+
 
 def sla_over_resolved(conn, threshold_minutes: int) -> dict:
     """SLA% computed ONLY over the resolved subset, labeled as such (constraint 19)."""
