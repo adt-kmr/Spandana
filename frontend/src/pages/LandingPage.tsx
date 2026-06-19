@@ -149,6 +149,17 @@ export const LandingPage: React.FC = () => {
         </div>
       </section>
 
+      {/* FOOTER */}
+      <footer className="border-t-8 border-black bg-brutal-yellow py-12">
+        <div className="max-w-6xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-6">
+          <div className="text-4xl font-black tracking-tighter">CLEAR.</div>
+          <div className="flex gap-8">
+            <Link to="#" className="font-bold text-xl hover:underline decoration-4 underline-offset-4 uppercase">About Us</Link>
+            <Link to="#" className="font-bold text-xl hover:underline decoration-4 underline-offset-4 uppercase">Contact Us</Link>
+          </div>
+        </div>
+      </footer>
+
     </div>
   );
 };

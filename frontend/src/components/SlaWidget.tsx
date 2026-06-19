@@ -25,7 +25,7 @@ export default function SlaWidget() {
             <p className="text-slate-500 text-sm font-medium italic">N/A — no resolved incidents yet</p>
           ) : (
             <div className="flex items-baseline gap-2">
-              <span className="text-4xl font-bold text-emerald-600">{data?.sla_pct}%</span>
+              <span className="text-4xl font-bold text-emerald-600">{typeof data?.sla_pct === 'number' ? data.sla_pct.toFixed(1) : data?.sla_pct}%</span>
               <span className="text-sm text-slate-500 font-medium">met SLA</span>
             </div>
           )}
