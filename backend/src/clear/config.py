@@ -50,6 +50,17 @@ class Settings(BaseSettings):
     weather_archive_url: str = "https://archive-api.open-meteo.com/v1/archive"
     weather_forecast_url: str = "https://api.open-meteo.com/v1/forecast"
 
+    # --- Phase 3: MuRIL multilingual severity embeddings (LOCAL / code-only) ---
+    # Flag OFF by default => byte-for-byte the current backend. Set CLEAR_USE_MURIL=1 to
+    # append PCA-reduced MuRIL text embeddings to the severity feature set. Intentionally NOT
+    # wired into the Docker build or render.yaml; exercised locally only.
+    use_muril: bool = False
+    muril_model_name: str = "google/muril-base-cased"
+    muril_cache_path: Path = Field(default=Path("data/models/muril_cache.joblib"))
+    muril_pca_dims: int = 16
+    muril_batch_size: int = 32
+    muril_max_length: int = 64
+
     @property
     def ist_tz(self) -> timezone:
         return timezone(timedelta(minutes=self.ist_offset_minutes))
