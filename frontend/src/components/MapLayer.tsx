@@ -12,6 +12,7 @@ interface MapLayerProps {
 export default function MapLayer({ scope }: MapLayerProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
+  const markerInstances = useRef<maplibregl.Marker[]>([]);
 
   const { data: hotspots } = useQuery({
     queryKey: ['hotspots'],
@@ -36,20 +37,23 @@ export default function MapLayer({ scope }: MapLayerProps) {
 
     map.current.addControl(new maplibregl.NavigationControl(), 'top-right');
 
-    map.current.on('load', () => {
-      // We would ideally add sources and layers here. 
-      // For a production app, we need geojson. Since we only have centroids and corridor names,
-      // we will just plot markers for hotspots.
-    });
+    map.current.on('load', () => map.current?.resize());
 
+    const ro = new ResizeObserver(() => map.current?.resize());
+    ro.observe(mapContainer.current);
+
+    return () => {
+      ro.disconnect();
+      map.current?.remove();
+      map.current = null;
+    };
   }, []);
 
   useEffect(() => {
     if (!map.current || !hotspots?.clusters) return;
 
-    // Remove existing markers (simplified for this demo, usually we'd track marker instances)
-    const markers = document.querySelectorAll('.hotspot-marker');
-    markers.forEach(m => m.remove());
+    markerInstances.current.forEach(m => m.remove());
+    markerInstances.current = [];
 
     hotspots.clusters.forEach(cluster => {
       if (!cluster.centroid_lon || !cluster.centroid_lat) return;
@@ -58,7 +62,7 @@ export default function MapLayer({ scope }: MapLayerProps) {
       el.className = 'hotspot-marker w-6 h-6 bg-red-500 rounded-full border-2 border-white shadow-lg opacity-80 flex items-center justify-center text-white text-xs font-bold';
       el.innerText = String(cluster.size);
 
-      new maplibregl.Marker(el)
+      const marker = new maplibregl.Marker(el)
         .setLngLat([cluster.centroid_lon, cluster.centroid_lat])
         .setPopup(new maplibregl.Popup({ offset: 25 }).setHTML(`
           <div class="p-2">
@@ -68,6 +72,8 @@ export default function MapLayer({ scope }: MapLayerProps) {
           </div>
         `))
         .addTo(map.current!);
+        
+      markerInstances.current.push(marker);
     });
   }, [hotspots]);
 

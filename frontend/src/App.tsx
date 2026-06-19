@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
 import OperatorDashboard from './pages/OperatorDashboard';
+import OperatorStats from './pages/OperatorStats';
 import CitizenView from './pages/CitizenView';
 import { LandingPage } from './pages/LandingPage';
 import HealthBadge from './components/HealthBadge';
@@ -30,6 +31,7 @@ function App() {
           <Routes>
             <Route path="/" element={<LandingPage />} />
             {isOperator && <Route path="/operator" element={<OperatorDashboard />} />}
+            {isOperator && <Route path="/operator/stats" element={<OperatorStats />} />}
             {isCitizen && <Route path="/citizen" element={<CitizenView />} />}
             <Route
               path="*"
