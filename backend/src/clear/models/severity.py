@@ -9,7 +9,9 @@ import numpy as np
 import pandas as pd
 from lightgbm import LGBMClassifier
 from sklearn.calibration import CalibratedClassifierCV
+from sklearn.decomposition import PCA
 
+from .. import nlp_muril
 from ..config import get_settings
 from ..preprocessing import prepare_records
 from ..schema import EVENT_CAUSES, SEVERITY_BANDS
@@ -48,14 +50,26 @@ def _featurize(frame: pd.DataFrame, freq_map: dict, lat_fill: float, lon_fill: f
         feats[f"cause_{c}"] = (frame["event_cause"] == c).astype(int)
     return feats[_CANDIDATE_FEATURES]
 
+_MURIL_PREFIX = "muril_"
+
+def _muril_features(frame: pd.DataFrame, pca) -> pd.DataFrame:
+    """PCA-reduced MuRIL embedding columns for `frame`, or empty if disabled / no pca."""
+    if pca is None or not get_settings().use_muril:
+        return pd.DataFrame(index=frame.index)
+    emb = nlp_muril.embed_texts(nlp_muril.compose_text(frame))
+    reduced = pca.transform(emb)
+    cols = [f"{_MURIL_PREFIX}{i}" for i in range(reduced.shape[1])]
+    return pd.DataFrame(reduced, index=frame.index, columns=cols)
+
 class SeverityModel:
-    def __init__(self, clf, columns, freq_map, lat_fill, lon_fill, version):
+    def __init__(self, clf, columns, freq_map, lat_fill, lon_fill, version, muril_pca=None):
         self.clf = clf
         self.columns = columns
         self.freq_map = freq_map
         self.lat_fill = lat_fill
         self.lon_fill = lon_fill
         self.version = version
+        self.muril_pca = muril_pca
 
     @classmethod
     def model_path(cls, version: Optional[str] = None) -> Path:
@@ -84,6 +98,18 @@ class SeverityModel:
         lon_fill = float(lon_med) if pd.notna(lon_med) else 0.0
 
         X = _featurize(labeled, freq_map, lat_fill, lon_fill)
+        muril_pca = None
+        if get_settings().use_muril:
+            emb = nlp_muril.embed_texts(nlp_muril.compose_text(labeled))
+            if emb.any():
+                n_comp = min(get_settings().muril_pca_dims, emb.shape[0], emb.shape[1])
+                muril_pca = PCA(n_components=n_comp,
+                                random_state=get_settings().random_seed).fit(emb)
+                reduced = muril_pca.transform(emb)
+                mcols = [f"{_MURIL_PREFIX}{i}" for i in range(reduced.shape[1])]
+                X = pd.concat(
+                    [X, pd.DataFrame(reduced, index=X.index, columns=mcols)], axis=1
+                )
         # Drop zero-variance columns (rainfall_mm / lanes_blocked are all-zero in the real
         # export) so the model never wastes splits on dead signal; remember what we kept so the
         # serving path lines up exactly.
@@ -108,10 +134,13 @@ class SeverityModel:
         method = "sigmoid"
         clf = CalibratedClassifierCV(base, method=method, cv=cv)
         clf.fit(X, y)
-        return cls(clf, keep, freq_map, lat_fill, lon_fill, version)
+        return cls(clf, keep, freq_map, lat_fill, lon_fill, version, muril_pca)
 
     def _aligned(self, frame: pd.DataFrame) -> pd.DataFrame:
         X = _featurize(frame, self.freq_map, self.lat_fill, self.lon_fill)
+        muril = _muril_features(frame, self.muril_pca)
+        if not muril.empty:
+            X = pd.concat([X, muril], axis=1)
         for col in self.columns:
             if col not in X:
                 X[col] = 0
@@ -129,6 +158,7 @@ class SeverityModel:
         blob = {
             "clf": self.clf, "columns": self.columns, "freq_map": self.freq_map,
             "lat_fill": self.lat_fill, "lon_fill": self.lon_fill, "version": self.version,
+            "muril_pca": self.muril_pca,
         }
         path = self.model_path(self.version)
         joblib.dump(blob, path)
@@ -139,4 +169,4 @@ class SeverityModel:
     def load(cls, version: Optional[str] = None) -> "SeverityModel":
         b = joblib.load(cls.model_path(version))
         return cls(b["clf"], b["columns"], b["freq_map"], b["lat_fill"], b["lon_fill"],
-                   b["version"])
+                   b["version"], b.get("muril_pca"))
