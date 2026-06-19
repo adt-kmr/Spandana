@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, BarChart3, LogOut } from 'lucide-react';
+import { ArrowLeft, BarChart3, LogOut, Maximize2, X } from 'lucide-react';
 import { clearOperatorToken } from '../auth';
 import IncidentQueue from '../components/IncidentQueue';
 import IncidentDetails from '../components/IncidentDetails';
@@ -10,7 +10,24 @@ import type { IncidentRow } from '../types';
 
 export default function OperatorDashboard() {
   const [selectedIncident, setSelectedIncident] = useState<IncidentRow | undefined>();
+  const [isAnalysisOpen, setIsAnalysisOpen] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsAnalysisOpen(false);
+    };
+    if (isAnalysisOpen) {
+      document.body.style.overflow = 'hidden';
+      window.addEventListener('keydown', handleEsc);
+    } else {
+      document.body.style.overflow = 'auto';
+    }
+    return () => {
+      document.body.style.overflow = 'auto';
+      window.removeEventListener('keydown', handleEsc);
+    };
+  }, [isAnalysisOpen]);
 
   const handleLogout = () => {
     clearOperatorToken();
@@ -57,7 +74,14 @@ export default function OperatorDashboard() {
             <h2 className="text-xl text-white font-black uppercase mb-2">Analysis</h2>
             <div className="flex-1 bg-white border-4 border-black rounded-lg overflow-hidden p-2">
               {selectedIncident ? (
-                <IncidentDetails incident={selectedIncident} />
+                <button 
+                  onClick={() => setIsAnalysisOpen(true)}
+                  className="w-full h-full brutal-card bg-brutal-bg hover:bg-brutal-yellow transition-colors flex flex-col items-center justify-center gap-2 p-4 cursor-pointer"
+                >
+                  <Maximize2 size={32} className="stroke-[3]" />
+                  <span className="font-bold text-lg text-black">Event: {selectedIncident.event_id.slice(0, 8)}...</span>
+                  <span className="text-sm font-semibold uppercase text-black">Click to view full intelligence</span>
+                </button>
               ) : (
                 <div className="h-full flex items-center justify-center text-lg font-bold">
                   Select an incident from the queue.
@@ -77,6 +101,33 @@ export default function OperatorDashboard() {
           </div>
         </div>
       </div>
+
+      {/* ANALYSIS OVERLAY MODAL */}
+      {isAnalysisOpen && selectedIncident && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div 
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm" 
+            onClick={() => setIsAnalysisOpen(false)}
+          />
+          <div className="brutal-card bg-brutal-bg w-full max-w-2xl z-10 flex flex-col max-h-[85vh] overflow-hidden p-0 border-[6px]">
+            <div className="bg-brutal-blue flex justify-between items-center p-4 md:p-6 border-b-[6px] border-black">
+              <h2 className="text-2xl md:text-3xl text-white font-black uppercase tracking-tighter drop-shadow-[2px_2px_0_rgba(0,0,0,1)]">Incident Intelligence</h2>
+              <button 
+                onClick={() => setIsAnalysisOpen(false)}
+                className="brutal-btn bg-brutal-pink text-white hover:opacity-90 p-2 border-[3px]"
+                aria-label="Close"
+              >
+                <X size={24} className="stroke-[3]" />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4 md:p-6">
+               <IncidentDetails incident={selectedIncident} />
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
