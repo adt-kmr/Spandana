@@ -1,10 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
 import OperatorDashboard from './pages/OperatorDashboard';
 import OperatorStats from './pages/OperatorStats';
+import OperatorLogin from './pages/OperatorLogin';
 import CitizenView from './pages/CitizenView';
 import { LandingPage } from './pages/LandingPage';
 import HealthBadge from './components/HealthBadge';
+import { isOperatorAuthed } from './auth';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -15,8 +17,14 @@ const queryClient = new QueryClient({
   },
 });
 
+function RequireOperator({ children }: { children: React.ReactNode }) {
+  if (!isOperatorAuthed()) {
+    return <Navigate to="/operator/login" replace />;
+  }
+  return <>{children}</>;
+}
+
 function App() {
-  const isOperator = !!import.meta.env.VITE_CLEAR_OPERATOR_TOKEN;
   const isCitizen = !!import.meta.env.VITE_CLEAR_CITIZEN_TOKEN;
 
   return (
@@ -30,8 +38,9 @@ function App() {
 
           <Routes>
             <Route path="/" element={<LandingPage />} />
-            {isOperator && <Route path="/operator" element={<OperatorDashboard />} />}
-            {isOperator && <Route path="/operator/stats" element={<OperatorStats />} />}
+            <Route path="/operator/login" element={<OperatorLogin />} />
+            <Route path="/operator" element={<RequireOperator><OperatorDashboard /></RequireOperator>} />
+            <Route path="/operator/stats" element={<RequireOperator><OperatorStats /></RequireOperator>} />
             {isCitizen && <Route path="/citizen" element={<CitizenView />} />}
             <Route
               path="*"

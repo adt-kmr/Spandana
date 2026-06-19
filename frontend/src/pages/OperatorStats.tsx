@@ -1,11 +1,19 @@
-import { Link } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { ArrowLeft, LogOut } from 'lucide-react';
 import SlaWidget from '../components/SlaWidget';
 import MetricsWidget from '../components/MetricsWidget';
 import { useQuery } from '@tanstack/react-query';
 import { ClearApi } from '../api';
+import { clearOperatorToken } from '../auth';
 
 export default function OperatorStats() {
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    clearOperatorToken();
+    navigate('/operator/login');
+  };
+
   const { data: hotspots, isLoading: isHotspotsLoading } = useQuery({
     queryKey: ['hotspots'],
     queryFn: () => ClearApi.hotspots(5, 20),
@@ -23,9 +31,14 @@ export default function OperatorStats() {
           <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tighter drop-shadow-[2px_2px_0_rgba(0,0,0,1)]">Operations Stats</h1>
           <p className="text-xl font-bold mt-2">System performance and predictive insights.</p>
         </div>
-        <Link to="/operator" className="brutal-btn bg-white hover:bg-gray-100 flex items-center justify-center gap-2">
-          <ArrowLeft size={20} className="stroke-[3]" /> Console
-        </Link>
+        <div className="flex flex-col sm:flex-row gap-4">
+          <Link to="/operator" className="brutal-btn bg-white hover:bg-gray-100 flex items-center justify-center gap-2">
+            <ArrowLeft size={20} className="stroke-[3]" /> Console
+          </Link>
+          <button onClick={handleLogout} className="brutal-btn bg-brutal-pink text-white hover:opacity-90 flex items-center justify-center gap-2">
+            <LogOut size={20} className="stroke-[3]" /> Log out
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 flex-1">

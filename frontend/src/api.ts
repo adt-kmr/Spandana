@@ -41,8 +41,12 @@ type Opts = {
   timeoutMs?: number;
 };
 
+import { getOperatorToken } from './auth';
+
 function tokenFor(scope?: Scope): string | undefined {
-  if (scope === "operator") return import.meta.env.VITE_CLEAR_OPERATOR_TOKEN;
+  if (scope === "operator") {
+    return getOperatorToken() || import.meta.env.VITE_CLEAR_OPERATOR_TOKEN;
+  }
   if (scope === "citizen") return import.meta.env.VITE_CLEAR_CITIZEN_TOKEN;
   return undefined;
 }

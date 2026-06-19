@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { ArrowLeft, BarChart3 } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { ArrowLeft, BarChart3, LogOut } from 'lucide-react';
+import { clearOperatorToken } from '../auth';
 import IncidentQueue from '../components/IncidentQueue';
 import IncidentDetails from '../components/IncidentDetails';
 import MapLayer from '../components/MapLayer';
@@ -9,6 +10,12 @@ import type { IncidentRow } from '../types';
 
 export default function OperatorDashboard() {
   const [selectedIncident, setSelectedIncident] = useState<IncidentRow | undefined>();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    clearOperatorToken();
+    navigate('/operator/login');
+  };
 
   return (
     <div className="min-h-screen lg:h-[100dvh] lg:overflow-hidden flex flex-col p-4 md:p-8 gap-6 max-w-[1600px] mx-auto w-full">
@@ -24,6 +31,9 @@ export default function OperatorDashboard() {
           <Link to="/" className="brutal-btn bg-white hover:bg-gray-100 flex items-center justify-center gap-2">
             <ArrowLeft size={20} className="stroke-[3]" /> Gateway
           </Link>
+          <button onClick={handleLogout} className="brutal-btn bg-brutal-pink text-white hover:opacity-90 flex items-center justify-center gap-2">
+            <LogOut size={20} className="stroke-[3]" /> Log out
+          </button>
         </div>
       </div>
 
