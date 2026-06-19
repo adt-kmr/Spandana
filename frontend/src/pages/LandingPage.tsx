@@ -1,13 +1,38 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Activity, Users, AlertTriangle } from 'lucide-react';
+import { ArrowRight, Activity, Users, AlertTriangle, X, ExternalLink } from 'lucide-react';
 
 import heroImg from '../assets/traffic-hero.png';
 import secondaryImg from '../assets/traffic-secondary.png';
 
+const TEAM = [
+  { name: "Jaiveer Singh",     linkedin: "https://www.linkedin.com/in/jaiveersingh2007/" },
+  { name: "Harkamal Singh",    linkedin: "https://www.linkedin.com/in/harkamal-singh-3b85b1316/" },
+  { name: "Aditya (Thetsu)",   linkedin: "https://www.linkedin.com/in/thetsu-aditya/" },
+  { name: "Dhruv Srivastava",  linkedin: "https://www.linkedin.com/in/dhruv-srivas-tava/" },
+];
+
 export const LandingPage: React.FC = () => {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsModalOpen(false);
+    };
+    if (isModalOpen) {
+      document.body.style.overflow = 'hidden';
+      window.addEventListener('keydown', handleEsc);
+    } else {
+      document.body.style.overflow = 'auto';
+    }
+    return () => {
+      document.body.style.overflow = 'auto';
+      window.removeEventListener('keydown', handleEsc);
+    };
+  }, [isModalOpen]);
+
   return (
-    <div className="min-h-screen bg-brutal-bg font-sans selection:bg-black selection:text-white pb-20">
+    <div className="min-h-screen bg-brutal-bg font-sans selection:bg-black selection:text-white pb-20 overflow-x-hidden">
       
       {/* Navigation - sticky as requested */}
       <nav className="p-6 border-b-4 border-black bg-white flex justify-between items-center sticky top-0 z-50">
@@ -154,11 +179,61 @@ export const LandingPage: React.FC = () => {
         <div className="max-w-6xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="text-4xl font-black tracking-tighter">CLEAR.</div>
           <div className="flex gap-8">
-            <Link to="#" className="font-bold text-xl hover:underline decoration-4 underline-offset-4 uppercase">About Us</Link>
-            <Link to="#" className="font-bold text-xl hover:underline decoration-4 underline-offset-4 uppercase">Contact Us</Link>
+            <button 
+              onClick={() => setIsModalOpen(true)} 
+              className="font-bold text-xl hover:underline decoration-4 underline-offset-4 uppercase bg-transparent border-none cursor-pointer p-0"
+            >
+              Contact Us
+            </button>
           </div>
         </div>
       </footer>
+
+      {/* TEAM OVERLAY MODAL */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div 
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm" 
+            onClick={() => setIsModalOpen(false)}
+          />
+          <div className="brutal-card bg-brutal-bg w-full max-w-3xl z-10 p-6 md:p-8 flex flex-col max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-8 border-b-4 border-black pb-4">
+              <h2 className="text-3xl md:text-5xl font-black uppercase tracking-tighter">Meet The Team</h2>
+              <button 
+                onClick={() => setIsModalOpen(false)}
+                className="brutal-btn bg-brutal-pink text-white hover:bg-white hover:text-black p-2"
+                aria-label="Close"
+              >
+                <X size={24} className="stroke-[3]" />
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+              {TEAM.map((member) => (
+                <div key={member.name} className="brutal-card bg-white p-6 flex flex-col gap-4">
+                  <h3 className="text-2xl font-black uppercase">{member.name}</h3>
+                  <div className="mt-auto pt-4">
+                    <a 
+                      href={member.linkedin} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="brutal-btn bg-brutal-blue text-white hover:opacity-90 inline-flex items-center gap-2 py-2 px-4 w-full justify-center"
+                    >
+                      <ExternalLink size={20} /> LinkedIn
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="border-t-4 border-black pt-6 text-center">
+              <span className="brutal-badge bg-brutal-yellow text-black text-lg md:text-xl block py-3">
+                Thapar Institute of Engineering and Technology
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
