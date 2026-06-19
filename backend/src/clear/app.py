@@ -7,7 +7,7 @@ import json
 import re
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -31,6 +31,7 @@ from .validation import (
     validate_forecast,
     validate_severity,
 )
+from .nlp_corpus import cause_for_phrase
 
 log = configure_logging()
 
@@ -76,6 +77,15 @@ class CitizenReport(BaseModel):
     longitude: float
     description: str = ""
     event_cause: str = "others"
+
+
+class NlpSeverityRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=1000)
+    event_cause: str | None = None  # None => infer from the corpus phrase, else "others"
+    corridor: str = "unknown"
+    latitude: float | None = None
+    longitude: float | None = None
+    comment: str = ""
 
 
 def _load_models(app: FastAPI) -> None:
@@ -317,6 +327,39 @@ def create_app() -> FastAPI:
             return {"confirmed": True, "recommendation_id": req.recommendation_id}
         finally:
             conn.close()
+
+    @app.post("/nlp/severity")
+    def nlp_severity(
+        body: NlpSeverityRequest,
+        _claims=Depends(require_scope("citizen")),
+    ):
+        """Live multilingual triage: free text -> calibrated severity band + confidence.
+        Uses the MuRIL embedding cache (no torch). Cache hit => real multilingual signal;
+        cache miss with torch absent => embeddings degrade to zero and the model falls back
+        to its non-text features (graceful, never 500s on that account).
+        """
+        sev = getattr(app.state, "severity", None)
+        if sev is None:
+            raise HTTPException(status_code=503, detail="severity model unavailable")
+        text = sanitize_text(body.text)
+        # Multilingual cause: caller value wins; else infer from the corpus phrase; else "others".
+        cause = body.event_cause or cause_for_phrase(text) or "others"
+        record: dict = {
+            "event_id": "NLP-LIVE",
+            "start_datetime": datetime.now(timezone.utc).isoformat(),
+            "event_cause": cause,
+            "corridor": body.corridor or "unknown",
+            "description": text,
+            "comment": sanitize_text(body.comment) if body.comment else "",
+            "status": "open",
+        }
+        # Only set coords when provided; omitting them lets the model use its trained lat/lon fill.
+        if body.latitude is not None:
+            record["latitude"] = body.latitude
+        if body.longitude is not None:
+            record["longitude"] = body.longitude
+        raw = sev.predict_one(record)
+        return validate_severity(raw)
 
     @app.post("/citizen/report")
     def citizen_report(

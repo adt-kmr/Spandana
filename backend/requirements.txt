@@ -14,3 +14,5 @@ python-dateutil>=2.9
 joblib>=1.4
 pytest>=8.2
 httpx>=0.27
+
+# MuRIL (Phase 3) is a local-only extra: pip install ".[nlp]"  (torch + transformers)

@@ -13,3 +13,5 @@ data/*.db-shm
 *.joblib
 .env
 tests/
+
+!data/seed/muril_cache.joblib

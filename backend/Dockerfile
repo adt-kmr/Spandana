@@ -25,9 +25,16 @@ COPY data/raw ./data/raw
 # retrain, no OOM risk on small instances. CLEAR_SKIP_MODEL_REGISTRY=1 saves the artifacts but
 # skips the Postgres registry write, so the build needs no live database. The final test fails
 # the build loudly if the models did not bake.
+# Seed the precomputed MuRIL cache so build-time training can attach MuRIL features
+# WITHOUT installing torch (every training-row text is already a cache hit).
+COPY data/seed ./data/seed
+RUN mkdir -p data/models && cp data/seed/muril_cache.joblib data/models/muril_cache.joblib
+ENV CLEAR_USE_MURIL=1
+
 RUN mkdir -p data/models \
-    && CLEAR_SKIP_MODEL_REGISTRY=1 python -m clear.train all \
-    && test -f data/models/forecast.joblib
+    && CLEAR_SKIP_MODEL_REGISTRY=1 CLEAR_USE_MURIL=1 python -m clear.train all \
+    && test -f data/models/forecast.joblib \
+    && test -f data/models/severity.joblib
 
 COPY gunicorn.conf.py entrypoint.sh ./
 RUN chmod +x entrypoint.sh
