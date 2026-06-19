@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware   # <-- add this line
 from . import db
 from .auth import require_scope
 from .config import get_settings
+from .ratelimit import RateLimitMiddleware
 from .degradation import fifo_queue, stale_corridor_risk
 from .ingestion import ingest_one
 from .logging_setup import configure_logging
@@ -140,7 +141,18 @@ def create_app() -> FastAPI:
         lifespan=_lifespan,
     )
     
-     # --- CORS: allow the browser frontend to call the API (fixes OPTIONS 405) ---
+    # --- Rate limiting: fixed-window 429 guard (flag-gated). Registered BEFORE CORS so the
+    #     CORS middleware stays the OUTERMOST layer and 429 responses keep their CORS headers. ---
+    settings = get_settings()
+    if getattr(settings, "rate_limit_enabled", False):
+        app.add_middleware(
+            RateLimitMiddleware,
+            limit=settings.rate_limit_requests,
+            window_seconds=settings.rate_limit_window_seconds,
+            exempt_paths={"/healthz"},
+        )
+
+    # --- CORS: allow the browser frontend to call the API (fixes OPTIONS 405) ---
     settings = get_settings()
     origins = getattr(settings, "cors_origins", None) or [
         "http://localhost:5173",
