@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 
 from .config import get_settings
+from .nlp_phrasebank import compose_description
 from .schema import RAW_COLUMNS
 
 _CORRIDORS = [
@@ -27,9 +28,10 @@ _CAUSES = [
 ]
 _VEH = ["truck", "bus", "car", "auto", "two_wheeler", "lcv"]
 
-_URGENCY = [("minor", 0.40), ("moderate", 0.30), ("serious", 0.20), ("severe", 0.10)]
-# urgency is now a PRIMARY label driver, so the words alone can move the band
-_URGENCY_SCORE = {"minor": 0.0, "moderate": 1.1, "serious": 2.3, "severe": 3.6}
+# Urgency ~ band balance: each tier maps mostly onto one band, so classes come out ~even.
+_URGENCY = [("minor", 0.28), ("moderate", 0.26), ("serious", 0.24), ("severe", 0.22)]
+# Urgency is the PRIMARY band driver; widened gaps + low noise => text alone separates bands.
+_URGENCY_SCORE = {"minor": 0.0, "moderate": 1.4, "serious": 2.8, "severe": 4.2}
 
 def _pick(rng, options):
     names = [o[0] for o in options]
@@ -62,18 +64,17 @@ def generate(n: int, seed: int) -> pd.DataFrame:
             closed = start + timedelta(minutes=true_dur + rng.gamma(2.0, 120.0))
         rain = float(max(0.0, rng.normal(2.0, 6.0)))
         lanes = int(rng.integers(0, 4)) if closure else int(rng.integers(0, 2))
-        # Severity label as a calibratable band (constraint 5 training target).
+        # Severity band: urgency (expressed in the text) dominates; structure only nudges.
         score = (
-            1.2 * closure
-            + 0.5 * {"low": 0, "medium": 1, "high": 2, "critical": 3}[priority]
-            + 0.5 * lanes
-            + (1.0 if cause == "accident" else 0.0)
-            + _URGENCY_SCORE[urgency]          # text-expressed urgency = primary driver
-            + rng.normal(0, 0.5)
+            _URGENCY_SCORE[urgency]                 # 0 / 1.4 / 2.8 / 4.2  -> primary driver
+            + 0.6 * closure
+            + 0.5 * (1.0 if cause == "accident" else 0.0)
+            + 0.3 * min(lanes, 2)
+            + rng.normal(0, 0.35)                   # low noise => clean text->band mapping
         )
         band = (
-            "critical" if score > 4.0 else "high" if score > 2.5
-            else "medium" if score > 1.2 else "low"
+            "critical" if score > 3.6 else "high" if score > 2.4
+            else "medium" if score > 1.0 else "low"
         )
         veh = rng.choice(_VEH) if cause == "breakdown" else ""
         rows.append(
@@ -86,7 +87,7 @@ def generate(n: int, seed: int) -> pd.DataFrame:
                 "end_datetime": "",  # intentionally null; never a duration source (constraint 3)
                 "event_cause": cause,
                 "sub_cause": "",
-                "description": _desc(rng, cause, closure, urgency),
+                "description": compose_description(rng, cause, closure, urgency),
                 "comment": "",
                 "priority": priority,
                 "requires_road_closure": str(closure).lower(),
@@ -103,7 +104,7 @@ def generate(n: int, seed: int) -> pd.DataFrame:
                 "source_channel": "radio",
                 "status": "resolved" if resolved else ("closed" if closed else "open"),
                 "severity_reported": band,
-                "Pot_holes": "1" if cause == "pot_holes" else "0",  # capital -> normalized
+                "Pot_holes": "1" if cause == "pot_holes" else "0",
                 "water_logging": "1" if cause == "water_logging" else "0",
                 "tree_fall": "1" if cause == "tree_fall" else "0",
                 "weather": "rain" if rain > 5 else "clear",
@@ -129,34 +130,11 @@ def generate(n: int, seed: int) -> pd.DataFrame:
         )
     return pd.DataFrame(rows, columns=RAW_COLUMNS)
 
-def _desc(rng, cause: str, closure: bool, urgency: str) -> str:
-    cause_phrase = {
-        "breakdown": ["vehicle breakdown", "stalled truck blocking lane", "bus broke down mid-road"],
-        "accident": ["accident reported", "vehicle collision", "two-wheeler crash"],
-        "tree_fall": ["tree fallen across carriageway", "large branch down on road"],
-        "water_logging": ["water logging on the stretch", "flooded road slowing traffic"],
-        "pot_holes": ["pothole causing slowdown", "damaged road surface"],
-        "public_event": ["public event procession", "rally spilling onto road"],
-        "others": ["incident reported", "obstruction on the road"],
-    }
-    urgency_phrase = {
-        "minor": ["minor, traffic still moving", "no injuries, slight slowdown"],
-        "moderate": ["partially blocking traffic", "moderate congestion building"],
-        "serious": ["lane blocked, injuries reported, ambulance requested", "people injured, ambulance on the way"],
-        "severe": ["people trapped, ambulance and fire services needed", "fatal, road fully blocked, severe jam"],
-    }
-    base = str(rng.choice(cause_phrase.get(cause, ["incident reported"])))
-    urg = str(rng.choice(urgency_phrase[urgency]))
-    text = f"{base}; {urg}"
-    if closure:
-        text += "; road closure required"
-    return text
-
 def main() -> None:
     settings = get_settings()
     parser = argparse.ArgumentParser(description="Generate synthetic CLEAR incident CSV.")
     parser.add_argument("--out", default=str(settings.raw_data_dir / "incidents.csv"))
-    parser.add_argument("--n", type=int, default=8173)
+    parser.add_argument("--n", type=int, default=20000)
     parser.add_argument("--seed", type=int, default=settings.random_seed)
     args = parser.parse_args()
     settings.ensure_dirs()

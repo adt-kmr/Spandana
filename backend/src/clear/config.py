@@ -61,6 +61,15 @@ class Settings(BaseSettings):
     muril_batch_size: int = 32
     muril_max_length: int = 64
 
+    # --- Dedicated text-severity model served by /nlp/severity ---
+    # Trained on ONLY text-derivable features so train == serve (no lat/lon/rainfall skew).
+    severity_text_enabled: bool = True
+    muril_text_pca_dims: int = 192          # richer than the structured model's 16
+    severity_text_embed_dropout: float = 0.15  # zero embeddings on 30% of train rows (prod robustness)
+    severity_text_max_iter: int = 2000      # MLP can train as long as it needs (early stopping guards it)
+    severity_text_mlp_alpha: float = 1e-4
+    severity_text_lr_c: float = 2.0
+
     @property
     def ist_tz(self) -> timezone:
         return timezone(timedelta(minutes=self.ist_offset_minutes))

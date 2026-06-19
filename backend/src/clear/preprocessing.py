@@ -3,6 +3,7 @@ junction snap-to-OSM-node (cached), and null-safe vehicle features."""
 from __future__ import annotations
 
 import math
+import unicodedata
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -19,6 +20,81 @@ CUE_WORDS = (
     "block", "severe", "major", "fatal", "ambulance", "trapped", "fallen",
     "flood", "waterlog", "stuck", "jam",
 )
+
+# Tiered, multilingual severity cue lexicons (EN / हिन्दी / ಕನ್ನಡ / romanized). These power the
+# text-only severity model and work with ZERO torch, so /nlp/severity stays confident in prod
+# even on a MuRIL cache miss. Substring .count() matching; non-Latin scripts are case-stable.
+SEVERE_CUES = (
+    # English
+    "fatal", "fatality", "fatalities", "died", "death", "dead", "killed",
+    "casualty", "casualties", "trapped", "fire", "burning", "burnt", "blaze",
+    "explosion", "critical", "severe", "overturn", "overturned", "flipped",
+    "drowned", "drowning", "washed away",
+    # हिन्दी
+    "मृत", "मौत", "मृत्यु", "लाश", "फँसे", "फंसे", "फँस", "फंस",
+    "आग", "गंभीर", "भीषण", "भयानक", "घातक", "जानलेवा",
+    # ಕನ್ನಡ
+    "ಸಾವು", "ಮೃತ", "ಬೆಂಕಿ", "ಸಿಲುಕಿ", "ಗಂಭೀರ", "ಭೀಕರ", "ಮಾರಣಾಂತಿಕ",
+)
+SERIOUS_CUES = (
+    "injured", "injury", "injuries", "ambulance", "blood", "collision",
+    "accident", "crash", "head-on", "rammed",
+    # serious flooding
+    "submerged", "stranded", "swept", "marooned", "knee-deep", "waist-deep", "overflowing",
+    "घायल", "एम्बुलेंस", "दुर्घटना", "टक्कर", "हादसा", "एक्सीडेंट",
+    "डूब", "बाढ़", "बह गया",
+    "ಗಾಯ", "ಆಂಬುಲೆನ್ಸ್", "ಅಪಘಾತ", "ಡಿಕ್ಕಿ", "ಗಾಯಗೊಂಡ",
+    "ಮುಳುಗಿ", "ಕೊಚ್ಚಿ", "ಪ್ರವಾಹ",
+)
+MODERATE_CUES = (
+    "blocked", "block", "jam", "congestion", "slow", "partially", "stuck",
+    "diversion", "queue", "tailback",
+    # neutral flooding / disruption
+    "water logging", "waterlogging", "waterlogged", "flooded", "flooding",
+    "रुका", "जाम", "भीड़", "धीमा", "रुकावट", "जलभराव", "पानी भर",
+    "ಬ್ಲಾಕ್", "ಜಾಮ್", "ನಿಧಾನ", "ದಟ್ಟಣೆ", "ತಡೆ", "ನೀರು ನಿಂತಿ", "ನೀರು ತುಂಬಿ",
+)
+MINOR_CUES = (
+    "minor", "slight", "small", "cleared", "moving", "normal",
+    "मामूली", "छोटा", "हल्का", "सामान्य",
+    "ಸಣ್ಣ", "ಚಿಕ್ಕ", "ಲಘು", "ಸಾಮಾನ್ಯ",
+)
+CLOSURE_CUES = (
+    "closure", "closed", "fully blocked", "shut", "road closed", "blocked off",
+    "बंद", "पूरी तरह बंद",
+    "ಬಂದ್", "ಸಂಪೂರ್ಣ ಬಂದ್",
+)
+
+def _normalize_text(text: str) -> str:
+    """Lowercase + NFC + collapse Hindi chandrabindu (ँ U+0901) to anusvara
+    (ं U+0902) so फँसे/फंसे, गाँव/गांव match a single lexicon spelling."""
+    return unicodedata.normalize("NFC", (text or "").lower()).replace("\u0901", "\u0902")
+
+# Negation: a danger word right next to a negator must NOT count
+# ("no fire", "koi injury nahi", "कोई घायल नहीं", "ಗಾಯ ಇಲ್ಲ").
+_PRE_NEGATORS = frozenset({"no", "not", "without", "never", "bina", "बिना", "ना"})
+_POST_NEGATORS = frozenset({"nahi", "nahin", "नहीं", "नही"})
+
+def _strip_negated(text: str) -> str:
+    """Blank a cue token adjacent to a negator. Directional: pre-negators kill
+    the next token; post-negators and the Kannada 'ಇಲ್ಲ' suffix kill the prev."""
+    toks = text.split()
+    out = list(toks)
+    for i, raw in enumerate(toks):
+        core = raw.strip(".,;:!?()-")
+        if core in _PRE_NEGATORS and i + 1 < len(toks):
+            out[i + 1] = ""
+        if (core in _POST_NEGATORS or core.endswith("ಇಲ್ಲ")) and i - 1 >= 0:
+            out[i - 1] = ""
+    return " ".join(out)
+
+def _count_terms(text: str, terms: tuple) -> int:
+    t = _strip_negated(_normalize_text(text))
+    return sum(t.count(_normalize_text(w)) for w in terms)
+
+def count_cues(text: str) -> int:
+    t = _strip_negated(_normalize_text(text))
+    return sum(t.count(w) for w in CUE_WORDS)
 
 
 def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -208,9 +284,7 @@ def clearance_label(
     return round(minutes, 3), observed, admin
 
 
-def count_cues(text: str) -> int:
-    t = (text or "").lower()
-    return sum(t.count(w) for w in CUE_WORDS)
+
 
 
 def _col(df: pd.DataFrame, name: str, default: Any = None) -> pd.Series:
@@ -288,6 +362,12 @@ def prepare_records(records: list[dict], as_of: Optional[datetime] = None) -> pd
     out["admin_close"] = admin
     out["junction_node"] = snap_junctions(out["latitude"], out["longitude"])
     out["cue_count"] = (out["description"] + " " + out["comment"]).map(count_cues)
+    _cue_blob = (out["description"] + " " + out["comment"])
+    out["cue_severe"] = _cue_blob.map(lambda t: _count_terms(t, SEVERE_CUES))
+    out["cue_serious"] = _cue_blob.map(lambda t: _count_terms(t, SERIOUS_CUES))
+    out["cue_moderate"] = _cue_blob.map(lambda t: _count_terms(t, MODERATE_CUES))
+    out["cue_minor"] = _cue_blob.map(lambda t: _count_terms(t, MINOR_CUES))
+    out["cue_closure"] = _cue_blob.map(lambda t: _count_terms(t, CLOSURE_CUES))
     out["priority_ord"] = out["priority"].map(PRIORITY_ORD).fillna(1).astype(int)
     return out
 

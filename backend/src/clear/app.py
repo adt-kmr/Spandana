@@ -92,8 +92,10 @@ def _load_models(app: FastAPI) -> None:
     from .models.clearance import ClearanceModel
     from .models.forecast import ForecastModel
     from .models.severity import SeverityModel
+    from .models.severity_text import SeverityTextModel
     for attr, loader in (
         ("severity", SeverityModel.load),
+        ("severity_text", SeverityTextModel.load),
         ("clearance", ClearanceModel.load),
         ("forecast", ForecastModel.load),
     ):
@@ -183,6 +185,7 @@ def create_app() -> FastAPI:
             "status": "ok",
             "models": {
                 "severity": getattr(app.state, "severity", None) is not None,
+                "severity_text": getattr(app.state, "severity_text", None) is not None,
                 "clearance": getattr(app.state, "clearance", None) is not None,
                 "forecast": getattr(app.state, "forecast", None) is not None,
             },
@@ -338,7 +341,7 @@ def create_app() -> FastAPI:
         cache miss with torch absent => embeddings degrade to zero and the model falls back
         to its non-text features (graceful, never 500s on that account).
         """
-        sev = getattr(app.state, "severity", None)
+        sev = getattr(app.state, "severity_text", None) or getattr(app.state, "severity", None)
         if sev is None:
             raise HTTPException(status_code=503, detail="severity model unavailable")
         text = sanitize_text(body.text)

@@ -15,10 +15,12 @@ from .models.clearance import ClearanceModel
 from .models.forecast import ForecastModel
 from .models.severity import SeverityModel
 from .preprocessing import load_and_prepare
+from .models.severity_text import SeverityTextModel
 
 log = configure_logging()
 _TRAINERS = {
     "severity": SeverityModel,
+    "severity_text": SeverityTextModel,
     "clearance": ClearanceModel,
     "forecast": ForecastModel,
 }
@@ -71,7 +73,7 @@ def train_all() -> list[dict]:
     frame = _frame()
     version = _version()
     results = []
-    for name in ("severity", "clearance", "forecast"):
+    for name in ("severity", "severity_text", "clearance", "forecast"):
         try:
             results.append(train_model(name, frame=frame, version=version))
         except Exception as exc:  # noqa: BLE001 - keep training the remaining models
