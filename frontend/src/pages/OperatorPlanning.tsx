@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, LogOut, Shield, Construction, Truck, Info, Calendar, MapPin, ArrowRight, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, LogOut, Shield, Construction, Truck, Info, Calendar, MapPin, ArrowRight, AlertTriangle, BarChart3 } from 'lucide-react';
 import { ClearApi, ApiError } from '../api';
 import { clearOperatorToken } from '../auth';
 
@@ -115,6 +115,9 @@ export default function OperatorPlanning() {
           <p className="text-xl font-bold mt-2 font-sans text-black">Event simulations and resource dispatch optimization.</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-4">
+          <Link to="/operator/stats" className="brutal-btn bg-brutal-blue text-white hover:opacity-90 flex items-center justify-center gap-2">
+            <BarChart3 size={20} className="stroke-[3]" /> Dashboard Stats
+          </Link>
           <Link to="/operator" className="brutal-btn bg-white hover:bg-gray-100 flex items-center justify-center gap-2">
             <ArrowLeft size={20} className="stroke-[3]" /> Operator Console
           </Link>

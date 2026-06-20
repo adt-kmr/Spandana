@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, BarChart3, LogOut, Maximize2, X } from 'lucide-react';
+import { ArrowLeft, BarChart3, LogOut, Maximize2, X, Calendar } from 'lucide-react';
 import { clearOperatorToken } from '../auth';
 import IncidentQueue from '../components/IncidentQueue';
 import IncidentDetails from '../components/IncidentDetails';
@@ -42,6 +42,9 @@ export default function OperatorDashboard() {
           <p className="text-xl font-bold mt-2">Real-time incident triage and dispatch support.</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-4">
+          <Link to="/operator/planning" className="brutal-btn bg-brutal-green text-black hover:opacity-90 flex items-center justify-center gap-2">
+            <Calendar size={20} className="stroke-[3]" /> Planning Studio
+          </Link>
           <Link to="/operator/stats" className="brutal-btn bg-brutal-blue text-white hover:opacity-90 flex items-center justify-center gap-2">
             <BarChart3 size={20} className="stroke-[3]" /> Dashboard Stats
           </Link>
