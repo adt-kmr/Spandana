@@ -14,6 +14,13 @@ import type {
   ConfirmRequest,
   CitizenReport,
   IngestPayload,
+  EventTypesResponse,
+  EventImpactRequest,
+  EventImpactResponse,
+  ResourcePlanRequest,
+  ResourcePlanResponse,
+  DiversionsResponse,
+  MetricsByEventResponse,
 } from './types';
 
 const BASE = import.meta.env.VITE_CLEAR_API_BASE ?? "http://localhost:8000";
@@ -120,4 +127,14 @@ export const ClearApi = {
   metrics: () => api<MetricsResponse>("/metrics", { scope: "operator" }),
   citizenReport: (payload: CitizenReport) =>
     api<{ report_accepted: boolean; event_id: string; written?: boolean }>("/citizen/report", { method: "POST", scope: "citizen", body: payload }),
+  eventTypes: (scope: Scope = "operator") =>
+    api<EventTypesResponse>("/events/types", { scope }),
+  eventImpact: (body: EventImpactRequest, scope: Scope = "operator") =>
+    api<EventImpactResponse>("/events/impact", { method: "POST", scope, body }),
+  resourcePlan: (body: ResourcePlanRequest) =>
+    api<ResourcePlanResponse>("/resources/plan", { method: "POST", scope: "operator", body }),
+  diversions: (corridor: string, scope: Scope = "operator") =>
+    api<DiversionsResponse>("/diversions", { scope, query: { corridor } }),
+  metricsByEvent: () =>
+    api<MetricsByEventResponse>("/metrics/by-event", { scope: "operator" }),
 };

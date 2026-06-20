@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ClearApi } from '../api';
 import { Activity, Clock, ServerCrash } from 'lucide-react';
 import type { IncidentRow } from '../types';
+import DiversionAid from './DiversionAid';
 
 export default function IncidentDetails({ incident }: { incident: IncidentRow }) {
   const { data: health } = useQuery({
@@ -96,7 +97,13 @@ export default function IncidentDetails({ incident }: { incident: IncidentRow })
             </div>
           )}
         </div>
+
+        {/* Diversion Aid Card */}
+        {incident.corridor && (
+          <DiversionAid scope="operator" corridor={incident.corridor} />
+        )}
       </div>
     </div>
   );
 }
+

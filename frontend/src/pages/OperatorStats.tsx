@@ -24,6 +24,11 @@ export default function OperatorStats() {
     queryFn: () => ClearApi.corridorsRisk('operator'),
   });
 
+  const { data: accuracy, isLoading: isAccuracyLoading } = useQuery({
+    queryKey: ['metricsByEvent'],
+    queryFn: () => ClearApi.metricsByEvent(),
+  });
+
   return (
     <div className="min-h-screen flex flex-col p-4 md:p-8 gap-6 max-w-[1600px] mx-auto w-full">
       <div className="flex flex-col md:flex-row md:items-center justify-between brutal-card bg-brutal-yellow p-6 border-[6px] gap-4">
@@ -32,6 +37,9 @@ export default function OperatorStats() {
           <p className="text-xl font-bold mt-2">System performance and predictive insights.</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-4">
+          <Link to="/operator/planning" className="brutal-btn bg-brutal-green text-black hover:opacity-90 flex items-center justify-center gap-2">
+            Planning Studio
+          </Link>
           <Link to="/operator" className="brutal-btn bg-white hover:bg-gray-100 flex items-center justify-center gap-2">
             <ArrowLeft size={20} className="stroke-[3]" /> Console
           </Link>
@@ -121,6 +129,62 @@ export default function OperatorStats() {
               <p className="font-bold text-slate-500">No hotspot data available.</p>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Post-event Accuracy Section */}
+      <div className="brutal-card border-[6px] bg-white p-6 mt-6 flex flex-col">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 border-b-4 border-black pb-2 gap-2">
+          <h2 className="text-2xl font-black uppercase">Post-Event Accuracy</h2>
+          {accuracy && (
+            <span className="brutal-badge bg-brutal-yellow text-black shadow-[2px_2px_0_0_rgba(0,0,0,1)] text-xs font-bold whitespace-nowrap self-start">
+              Overall MAE: {accuracy.overall_mae_minutes} min (n={accuracy.n})
+            </span>
+          )}
+        </div>
+
+        <div className="overflow-x-auto">
+          {isAccuracyLoading ? (
+            <div className="animate-pulse h-10 bg-slate-200 rounded"></div>
+          ) : accuracy?.by_event && accuracy.by_event.length > 0 ? (
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b-4 border-black text-sm uppercase">
+                  <th className="pb-2">Event Cause / Type</th>
+                  <th className="pb-2">MAE (min)</th>
+                  <th className="pb-2 text-right font-black">Sample Size (n)</th>
+                </tr>
+              </thead>
+              <tbody className="text-sm font-bold">
+                {accuracy.by_event.map((row, index) => {
+                  const isLowSample = row.n < 32;
+                  return (
+                    <tr
+                      key={`${row.event_cause}-${index}`}
+                      className={`border-b-2 border-black last:border-0 ${isLowSample ? 'opacity-50' : ''}`}
+                    >
+                      <td className="py-3 flex items-center gap-2">
+                        <span className="capitalize">{row.event_cause.replace(/_/g, ' ')}</span>
+                        {isLowSample && (
+                          <span className="text-[9px] font-black uppercase border border-black bg-white text-slate-500 px-1 py-0.5 rounded shadow-[1px_1px_0_0_rgba(0,0,0,1)]">
+                            low sample
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 font-mono">{row.mae_minutes.toFixed(2)} min</td>
+                      <td className="py-3 text-right">
+                        <span className={`brutal-badge text-xs ${isLowSample ? 'bg-slate-200 text-slate-500' : 'bg-brutal-green text-black'}`}>
+                          {row.n}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : (
+            <p className="font-bold text-slate-500">No event-level metrics yet.</p>
+          )}
         </div>
       </div>
     </div>
