@@ -25,6 +25,7 @@ const RAIN_CORRIDORS: Record<string, [number, number]> = {
 };
 
 // Shared data-driven colour expression (band => colour).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const BAND_COLOR: any = [
   'match', ['get', 'band'],
   'high', '#ef4444',
@@ -137,6 +138,7 @@ export default function MapLayer({ scope }: MapLayerProps) {
         },
       }));
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = { type: 'FeatureCollection', features };
 
     const apply = () => {
@@ -159,6 +161,7 @@ export default function MapLayer({ scope }: MapLayerProps) {
           'circle-opacity': 0.18,
           'circle-blur': 0.7,
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any);
 
       // Solid core dot.
@@ -172,6 +175,7 @@ export default function MapLayer({ scope }: MapLayerProps) {
           'circle-stroke-width': 2,
           'circle-stroke-color': '#ffffff',
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any);
 
       m.on('click', 'rain-risk-core', (e) => {
@@ -179,6 +183,7 @@ export default function MapLayer({ scope }: MapLayerProps) {
         if (!f) return;
         const p = f.properties as { corridor: string; score: number; band: string; multiplier: number };
         new maplibregl.Popup({ offset: 14 })
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           .setLngLat((f.geometry as any).coordinates as [number, number])
           .setHTML(`
             <div class="p-2 font-sans">
@@ -195,6 +200,7 @@ export default function MapLayer({ scope }: MapLayerProps) {
 
     if (m.isStyleLoaded()) apply();
     else m.once('load', apply);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rainSignature]);
 
   return (
