@@ -6,6 +6,7 @@ import MapLayer from '../components/MapLayer';
 import SlaWidget from '../components/SlaWidget';
 import CitizenReportForm from '../components/CitizenReportForm';
 import DiversionAid from '../components/DiversionAid';
+import RouteRainCheck from '../components/RouteRainCheck';
 import type { IncidentRow } from '../types';
 
 export default function CitizenView() {
@@ -32,6 +33,7 @@ export default function CitizenView() {
                <CitizenReportForm />
              </div>
            </div>
+           <RouteRainCheck />
            <div className="h-32 shrink-0 brutal-card border-[6px] bg-white p-4">
              <SlaWidget />
            </div>

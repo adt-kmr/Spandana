@@ -3,6 +3,7 @@ import { ClearApi } from '../api';
 import { Activity, Clock, ServerCrash } from 'lucide-react';
 import type { IncidentRow } from '../types';
 import DiversionAid from './DiversionAid';
+import RainRiskWidget from './RainRiskWidget';
 
 export default function IncidentDetails({ incident }: { incident: IncidentRow }) {
   const { data: health } = useQuery({
@@ -102,6 +103,9 @@ export default function IncidentDetails({ incident }: { incident: IncidentRow })
         {incident.corridor && (
           <DiversionAid scope="operator" corridor={incident.corridor} />
         )}
+
+        {/* Rain & Water-logging Card */}
+        <RainRiskWidget corridor={incident.corridor} scope="operator" />
       </div>
     </div>
   );
