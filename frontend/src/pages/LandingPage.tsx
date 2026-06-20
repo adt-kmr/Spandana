@@ -32,7 +32,7 @@ export const LandingPage: React.FC = () => {
   }, [isModalOpen]);
 
   return (
-    <div className="min-h-screen bg-brutal-bg font-sans selection:bg-black selection:text-white pb-20 overflow-x-hidden">
+    <div className="min-h-screen bg-brutal-bg font-sans selection:bg-black selection:text-white overflow-x-hidden">
 
       {/* Navigation - sticky as requested */}
       <nav className="p-6 border-b-4 border-black bg-white flex justify-between items-center sticky top-0 z-50">
