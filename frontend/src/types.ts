@@ -125,3 +125,23 @@ export interface DiversionsResponse { blocked_corridor: string; has_diversion: b
 export interface MetricsByEventRow { event_cause: string; mae_minutes: number; n: number; }
 export interface MetricsByEventResponse { by_event: MetricsByEventRow[]; overall_mae_minutes: number; n: number; }
 
+export type RainRisk = {
+  corridor: string;
+  available: boolean;            // false => grey out; multiplier is 1.0
+  rain_clog_score: number;       // 0..100
+  risk_band: "low" | "moderate" | "high" | "unknown";
+  rain_multiplier: number;       // 1.0 .. 1.6 — fold into ETA like the event multiplier
+  waterlog_weight?: number;      // corridor's historical flood propensity (0..1)
+  stale?: boolean;               // served from cache on a transient upstream miss
+  reason?: string;               // present when available is false
+  rain?: {
+    intensity: number;           // mm/min
+    accumulation: number;        // mm since 12 AM IST
+    temperature: number;         // °C
+    humidity: number;            // %
+    device_type: number | null;
+    stale: boolean;
+  };
+};
+
+

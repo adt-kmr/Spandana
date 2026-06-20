@@ -21,6 +21,7 @@ import type {
   ResourcePlanResponse,
   DiversionsResponse,
   MetricsByEventResponse,
+  RainRisk,
 } from './types';
 
 const BASE = import.meta.env.VITE_CLEAR_API_BASE ?? "http://localhost:8000";
@@ -137,4 +138,6 @@ export const ClearApi = {
     api<DiversionsResponse>("/diversions", { scope, query: { corridor } }),
   metricsByEvent: () =>
     api<MetricsByEventResponse>("/metrics/by-event", { scope: "operator" }),
+  rainRisk: (corridor: string, scope: Scope = "operator") =>
+    api<RainRisk>("/weather/rain-risk", { scope, query: { corridor } }),
 };
