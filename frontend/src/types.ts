@@ -113,3 +113,15 @@ export type IngestPayload = {
   priority?: "low" | "medium" | "high" | "critical";
   [k: string]: unknown;
 };
+
+export interface EventTypesResponse { event_types: string[]; }
+export interface EventImpactRequest { event_type?: string; base_minutes?: number; base_risk?: number; }
+export interface EventImpactResponse { event_type: string; multiplier: number; adjusted_clearance_minutes?: number; adjusted_risk?: number; }
+export interface ResourcePlanRequest { attendees: number; road_closures?: number; event_type?: string; }
+export interface ResourcePlanResponse { attendees: number; road_closures: number; event_type: string; multiplier: number; officers: number; officers_base: number; barricades: number; tow_trucks: number; note: string; }
+export type DiversionRank = "primary" | "secondary";
+export interface DiversionAlternate { corridor: string; rank: DiversionRank; delta_minutes: number; }
+export interface DiversionsResponse { blocked_corridor: string; has_diversion: boolean; alternates: DiversionAlternate[]; note: string; }
+export interface MetricsByEventRow { event_cause: string; mae_minutes: number; n: number; }
+export interface MetricsByEventResponse { by_event: MetricsByEventRow[]; overall_mae_minutes: number; n: number; }
+

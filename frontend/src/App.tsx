@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
 import OperatorDashboard from './pages/OperatorDashboard';
 import OperatorStats from './pages/OperatorStats';
 import OperatorLogin from './pages/OperatorLogin';
+import OperatorPlanning from './pages/OperatorPlanning';
 import CitizenView from './pages/CitizenView';
 import { LandingPage } from './pages/LandingPage';
 import HealthBadge from './components/HealthBadge';
@@ -41,6 +42,7 @@ function App() {
             <Route path="/operator/login" element={<OperatorLogin />} />
             <Route path="/operator" element={<RequireOperator><OperatorDashboard /></RequireOperator>} />
             <Route path="/operator/stats" element={<RequireOperator><OperatorStats /></RequireOperator>} />
+            <Route path="/operator/planning" element={<RequireOperator><OperatorPlanning /></RequireOperator>} />
             {isCitizen && <Route path="/citizen" element={<CitizenView />} />}
             <Route
               path="*"
