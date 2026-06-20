@@ -441,6 +441,14 @@ def create_app() -> FastAPI:
     	from .diversion import diversions_for
     	return diversions_for(corridor)
 
+    @app.get("/weather/rain-risk")
+    def weather_rain_risk(
+    	corridor: str,
+    	scope: str = Depends(require_scope("operator", "citizen")),
+    ) -> dict:
+    	from .rain_clog import corridor_rain_risk
+    	return corridor_rain_risk(corridor)
+
     @app.get("/metrics/by-event")
     def metrics_by_event(scope: str = Depends(require_scope("operator"))) -> dict:
     	from .metrics import clearance_error_by_event

@@ -75,6 +75,41 @@ class Settings(BaseSettings):
     barricades_per_closure: int = 4
     tow_per_attendees: int = 10000
 
+    # --- Phase 5: live rain-clog risk (Weather Union, real-time hyperlocal observation) ---
+    # Flag OFF by default => byte-for-byte the current backend. Set CLEAR_RAIN_CLOG_ENABLED=1 AND
+    # provide CLEAR_WEATHER_UNION_API_KEY to expose GET /weather/rain-risk. Read-only enrichment:
+    # no model retrain, no change to /ingest or any existing route. Weather Union is an OBSERVATION
+    # (nowcast) API: rain_intensity (mm/min) + rain_accumulation (mm since 12 AM IST).
+    rain_clog_enabled: bool = False
+    weather_union_api_key: str = ""
+    weather_union_base_url: str = "https://www.weatherunion.com/gw/weather/external/v0"
+    weather_union_timeout_seconds: float = 2.5
+    rain_clog_cache_seconds: int = 300  # upstream refreshes ~1/min; cache to respect daily quota
+    # Representative lat/long per corridor (Weather Union returns data within ~2 km of its nearest
+    # device). JSON => env-overridable via CLEAR_CORRIDOR_LATLON_JSON. Refine coords any time.
+    corridor_latlon_json: str = (
+        '{"mysore road": [12.9447, 77.5260], "bellary road": [13.0358, 77.5970], '
+        '"tumkur road": [13.0280, 77.5190], "orr east": [12.9560, 77.7010], '
+        '"orr west": [13.0280, 77.5050], "old madras road": [12.9920, 77.6720], '
+        '"hosur road": [12.9100, 77.6390], "magadi road": [12.9760, 77.5360], '
+        '"kanakapura road": [12.9120, 77.5600], "sarjapur road": [12.9180, 77.6810], '
+        '"mg road": [12.9750, 77.6090], "brigade road": [12.9720, 77.6090], '
+        '"residency road": [12.9690, 77.6010], "richmond road": [12.9620, 77.6010]}'
+    )
+    # Historical water-logging propensity per corridor (0..1): how flood-prone it is, used to weight
+    # live rain into a corridor-specific score. Seeded defaults; refine from incidents.water_logging
+    # density (helper SQL in §G). Env: CLEAR_CORRIDOR_WATERLOG_JSON.
+    corridor_waterlog_json: str = (
+        '{"mysore road": 0.45, "bellary road": 0.40, "tumkur road": 0.35, '
+        '"orr east": 0.65, "orr west": 0.55, "old madras road": 0.50, '
+        '"hosur road": 0.60, "magadi road": 0.30, "kanakapura road": 0.40, '
+        '"sarjapur road": 0.70, "mg road": 0.45, "brigade road": 0.40, '
+        '"residency road": 0.45, "richmond road": 0.40}'
+    )
+    corridor_waterlog_default: float = 0.4
+    rain_intensity_ref_mm_per_min: float = 0.5  # intensity that alone implies high surface-water risk
+    rain_accumulation_ref_mm: float = 40.0      # daily accumulation that alone implies high risk
+
     # --- Dedicated text-severity model served by /nlp/severity ---
     # Trained on ONLY text-derivable features so train == serve (no lat/lon/rainfall skew).
     severity_text_enabled: bool = True
@@ -102,6 +137,26 @@ class Settings(BaseSettings):
             return {str(k): float(v) for k, v in data.items()}
         except (ValueError, TypeError):
             return {"normal": 1.0}
+
+    @property
+    def corridor_latlon(self) -> dict[str, list[float]]:
+        """Parsed corridor -> [lat, lon] map (empty on bad JSON)."""
+        import json
+        try:
+            data = json.loads(self.corridor_latlon_json)
+            return {str(k).strip().lower(): [float(v[0]), float(v[1])] for k, v in data.items()}
+        except (ValueError, TypeError, IndexError, KeyError):
+            return {}
+
+    @property
+    def corridor_waterlog(self) -> dict[str, float]:
+        """Parsed corridor -> historical water-logging propensity 0..1 (empty on bad JSON)."""
+        import json
+        try:
+            data = json.loads(self.corridor_waterlog_json)
+            return {str(k).strip().lower(): float(v) for k, v in data.items()}
+        except (ValueError, TypeError):
+            return {}
 
     def ensure_dirs(self) -> None:
         # Postgres holds incident data now; we still keep local dirs for the raw CSV (ingest
