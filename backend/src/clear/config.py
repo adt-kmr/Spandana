@@ -110,6 +110,20 @@ class Settings(BaseSettings):
     rain_intensity_ref_mm_per_min: float = 0.5  # intensity that alone implies high surface-water risk
     rain_accumulation_ref_mm: float = 40.0      # daily accumulation that alone implies high risk
 
+    # --- Phase 5 (optional channel): Telegram bot. Separate process, pure API client. ---
+    # OFF by default => no-op; the bot process exits cleanly if disabled or unconfigured. The bot
+    # imports config only; it adds NO route/model/DB and does not affect the web API in any way.
+    telegram_enabled: bool = False
+    telegram_bot_token: str = ""                       # from @BotFather; SECRET
+    telegram_api_base: str = "https://api.telegram.org"
+    telegram_poll_timeout_seconds: int = 30            # long-poll wait
+    telegram_http_timeout_seconds: float = 10.0        # per-request socket timeout
+    telegram_allowed_chat_ids: str = ""               # CSV allowlist; empty = open to anyone
+    telegram_rate_limit_per_min: int = 20             # per-chat throttle
+    telegram_clear_api_base: str = "http://localhost:8000"  # where the bot calls the CLEAR API
+    telegram_api_token: str = ""                       # Bearer the bot sends; OPTIONAL — falls back to citizen_token (CLEAR_CITIZEN_TOKEN)
+    telegram_frontend_base: str = ""                  # deep links back to the web app (optional)
+
     # --- Dedicated text-severity model served by /nlp/severity ---
     # Trained on ONLY text-derivable features so train == serve (no lat/lon/rainfall skew).
     severity_text_enabled: bool = True
