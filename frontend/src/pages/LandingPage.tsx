@@ -2,14 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Activity, Users, AlertTriangle, X, ExternalLink } from 'lucide-react';
 
-import heroImg from '../assets/traffic-hero.png';
 import secondaryImg from '../assets/traffic-secondary.png';
+import RoadNetworkBackground from '../components/RoadNetworkBackground';
 
 const TEAM = [
-  { name: "Jaiveer Singh",     linkedin: "https://www.linkedin.com/in/jaiveersingh2007/" },
-  { name: "Harkamal Singh",    linkedin: "https://www.linkedin.com/in/harkamal-singh-3b85b1316/" },
-  { name: "Aditya (Thetsu)",   linkedin: "https://www.linkedin.com/in/thetsu-aditya/" },
-  { name: "Dhruv Srivastava",  linkedin: "https://www.linkedin.com/in/dhruv-srivas-tava/" },
+  { name: "Jaiveer Singh", linkedin: "https://www.linkedin.com/in/jaiveersingh2007/" },
+  { name: "Harkamal Singh", linkedin: "https://www.linkedin.com/in/harkamal-singh-3b85b1316/" },
+  { name: "Aditya (Thetsu)", linkedin: "https://www.linkedin.com/in/thetsu-aditya/" },
+  { name: "Dhruv Srivastava", linkedin: "https://www.linkedin.com/in/dhruv-srivas-tava/" },
 ];
 
 export const LandingPage: React.FC = () => {
@@ -32,8 +32,8 @@ export const LandingPage: React.FC = () => {
   }, [isModalOpen]);
 
   return (
-    <div className="min-h-screen bg-brutal-bg font-sans selection:bg-black selection:text-white pb-20 overflow-x-hidden">
-      
+    <div className="min-h-screen bg-brutal-bg font-sans selection:bg-black selection:text-white overflow-x-hidden">
+
       {/* Navigation - sticky as requested */}
       <nav className="p-6 border-b-4 border-black bg-white flex justify-between items-center sticky top-0 z-50">
         <div className="text-3xl font-black tracking-tighter">CLEAR.</div>
@@ -46,20 +46,21 @@ export const LandingPage: React.FC = () => {
       </nav>
 
       {/* 1) HERO — THE PROBLEM */}
-      <section 
+      <section
         className="relative flex items-center justify-center min-h-[80vh] border-b-8 border-black overflow-hidden"
       >
-        {/* Background Image with overlay */}
-        <div 
-          className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: `url(${heroImg})` }}
-        />
-        <div className="absolute inset-0 bg-brutal-yellow/80 mix-blend-multiply" />
-        <div className="absolute inset-0 bg-black/40" />
+        {/* Animated road-network background (dark futuristic map, behind content) */}
+        <div className="absolute inset-0 bg-[#0a0e1a]" />
+        <RoadNetworkBackground className="absolute inset-0 z-0" />
+        {/* Faint brand tint + contrast scrim so the brutalist headline stays legible */}
+        <div className="absolute inset-0 bg-brutal-yellow/10 mix-blend-overlay pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/50 to-[#0a0e1a] pointer-events-none" />
 
         <div className="relative z-10 max-w-5xl mx-auto px-6 text-center">
           <h1 className="text-5xl md:text-7xl lg:text-8xl font-black uppercase tracking-tighter text-white drop-shadow-[4px_4px_0_rgba(0,0,0,1)] mb-8">
-            Event-Driven Congestion Forms Faster Than Authorities Can React.
+            CLEAR
+            <br>
+            </br>Clearance & Logistics Engine for Authority Response
           </h1>
           <p className="text-xl md:text-3xl font-bold text-white bg-black inline-block px-4 py-2 border-4 border-white shadow-[8px_8px_0_0_#000]">
             Bengaluru traffic breaks down in minutes.
@@ -69,7 +70,7 @@ export const LandingPage: React.FC = () => {
 
       {/* 2) WHY IT'S HARD */}
       <section className="relative py-24 border-b-8 border-black">
-        <div 
+        <div
           className="absolute inset-0 bg-cover bg-center"
           style={{ backgroundImage: `url(${secondaryImg})` }}
         />
@@ -79,7 +80,7 @@ export const LandingPage: React.FC = () => {
           <h2 className="text-5xl md:text-7xl font-black mb-16 text-center uppercase tracking-tighter text-brutal-yellow drop-shadow-[4px_4px_0_rgba(0,0,0,1)]">
             Why It's Hard Today
           </h2>
-          
+
           <div className="grid md:grid-cols-3 gap-8">
             <div className="brutal-card bg-white p-8">
               <div className="w-16 h-16 bg-brutal-pink border-4 border-black rounded-full mb-8 flex items-center justify-center shadow-[4px_4px_0_0_#000] text-3xl font-black text-white">1</div>
@@ -87,7 +88,7 @@ export const LandingPage: React.FC = () => {
                 Event impact is not quantified in advance.
               </p>
             </div>
-            
+
             <div className="brutal-card bg-white p-8">
               <div className="w-16 h-16 bg-brutal-pink border-4 border-black rounded-full mb-8 flex items-center justify-center shadow-[4px_4px_0_0_#000] text-3xl font-black text-white">2</div>
               <p className="text-xl font-bold leading-relaxed uppercase">
@@ -111,7 +112,7 @@ export const LandingPage: React.FC = () => {
           <h2 className="text-5xl md:text-7xl font-black mb-16 text-center uppercase tracking-tighter text-black drop-shadow-[4px_4px_0_#ffdc00]">
             The CLEAR Approach
           </h2>
-          
+
           <div className="max-w-4xl mx-auto mb-16 text-center">
             <p className="text-2xl font-bold border-4 border-black p-6 bg-white shadow-[8px_8px_0_0_#000]">
               CLEAR is a decision-support engine that turns raw incident reports into ranked, confidence-aware recommendations. We advise—human operators confirm.
@@ -149,14 +150,14 @@ export const LandingPage: React.FC = () => {
           <h2 className="text-6xl md:text-8xl font-black mb-16 uppercase tracking-tighter drop-shadow-[4px_4px_0_#ffdc00]">
             Enter the System
           </h2>
-          
+
           <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
             <Link to="/operator" className="group">
               <div className="brutal-card bg-brutal-blue p-12 h-full flex flex-col items-center justify-center hover:bg-brutal-yellow transition-colors">
                 <div className="bg-white p-6 border-4 border-black rounded-full mb-8 shadow-[4px_4px_0_0_#000] group-hover:scale-110 transition-transform">
                   <Activity size={48} className="text-black" />
                 </div>
-                <h3 className="text-4xl font-black mb-4 uppercase text-white group-hover:text-black">Operator<br/>Console</h3>
+                <h3 className="text-4xl font-black mb-4 uppercase text-white group-hover:text-black">Operator<br />Console</h3>
                 <div className="bg-black text-white px-6 py-2 font-bold uppercase rounded-full mt-auto">Requires Access Code</div>
               </div>
             </Link>
@@ -166,7 +167,7 @@ export const LandingPage: React.FC = () => {
                 <div className="bg-white p-6 border-4 border-black rounded-full mb-8 shadow-[4px_4px_0_0_#000] group-hover:scale-110 transition-transform">
                   <Users size={48} className="text-black" />
                 </div>
-                <h3 className="text-4xl font-black mb-4 uppercase text-white group-hover:text-black">Citizen<br/>Portal</h3>
+                <h3 className="text-4xl font-black mb-4 uppercase text-white group-hover:text-black">Citizen<br />Portal</h3>
                 <div className="bg-black text-white px-6 py-2 font-bold uppercase rounded-full mt-auto">Public Access</div>
               </div>
             </Link>
@@ -179,8 +180,8 @@ export const LandingPage: React.FC = () => {
         <div className="max-w-6xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="text-4xl font-black tracking-tighter">CLEAR.</div>
           <div className="flex gap-8">
-            <button 
-              onClick={() => setIsModalOpen(true)} 
+            <button
+              onClick={() => setIsModalOpen(true)}
               className="font-bold text-xl hover:underline decoration-4 underline-offset-4 uppercase bg-transparent border-none cursor-pointer p-0"
             >
               Contact Us
@@ -192,14 +193,14 @@ export const LandingPage: React.FC = () => {
       {/* TEAM OVERLAY MODAL */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div 
-            className="absolute inset-0 bg-black/70 backdrop-blur-sm" 
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
             onClick={() => setIsModalOpen(false)}
           />
           <div className="brutal-card bg-brutal-bg w-full max-w-3xl z-10 p-6 md:p-8 flex flex-col max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-8 border-b-4 border-black pb-4">
               <h2 className="text-3xl md:text-5xl font-black uppercase tracking-tighter">Meet The Team</h2>
-              <button 
+              <button
                 onClick={() => setIsModalOpen(false)}
                 className="brutal-btn bg-brutal-pink text-white hover:bg-white hover:text-black p-2"
                 aria-label="Close"
@@ -207,15 +208,15 @@ export const LandingPage: React.FC = () => {
                 <X size={24} className="stroke-[3]" />
               </button>
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
               {TEAM.map((member) => (
                 <div key={member.name} className="brutal-card bg-white p-6 flex flex-col gap-4">
                   <h3 className="text-2xl font-black uppercase">{member.name}</h3>
                   <div className="mt-auto pt-4">
-                    <a 
-                      href={member.linkedin} 
-                      target="_blank" 
+                    <a
+                      href={member.linkedin}
+                      target="_blank"
                       rel="noopener noreferrer"
                       className="brutal-btn bg-brutal-blue text-white hover:opacity-90 inline-flex items-center gap-2 py-2 px-4 w-full justify-center"
                     >

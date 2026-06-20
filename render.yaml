@@ -15,3 +15,8 @@ services:
         generateValue: true
       - key: WEB_CONCURRENCY
         value: "2"
+      - key: CLEAR_RAIN_CLOG_ENABLED
+        value: "1"
+      - key: CLEAR_WEATHER_UNION_API_KEY
+        sync: false
+
