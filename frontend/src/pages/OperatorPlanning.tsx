@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, LogOut, Shield, Construction, Truck, Info, Calendar, MapPin, ArrowRight, AlertTriangle, BarChart3 } from 'lucide-react';
+import { ArrowLeft, LogOut, Shield, Construction, Truck, Info, Calendar, ArrowRight, AlertTriangle, BarChart3 } from 'lucide-react';
 import { ClearApi, ApiError } from '../api';
 import { clearOperatorToken } from '../auth';
 
