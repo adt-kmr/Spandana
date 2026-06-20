@@ -3,7 +3,7 @@ services:
     name: clear-api
     runtime: docker
     dockerContext: ./backend
-    dockerfilePath: ./Dockerfile
+    dockerfilePath: ./backend/Dockerfile
     plan: free
     healthCheckPath: /healthz
     envVars:
