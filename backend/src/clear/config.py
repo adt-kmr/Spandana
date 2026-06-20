@@ -61,6 +61,20 @@ class Settings(BaseSettings):
     muril_batch_size: int = 32
     muril_max_length: int = 64
 
+    # --- Phase 4: planning & decision-support modules (additive, no model changes) ---
+    # Forward-looking congestion multipliers by event type, applied by /events/impact to scale a
+    # baseline clearance/risk. Tune from historical incident density. JSON string so it is
+    # env-overridable via CLEAR_EVENT_MULTIPLIERS_JSON. Unknown types fall back to the default.
+    event_multipliers_json: str = (
+        '{"ipl_match": 2.3, "political_rally": 1.8, "concert": 2.0, '
+        '"festival": 1.7, "marathon": 1.6, "vip_movement": 1.5, "normal": 1.0}'
+    )
+    event_multiplier_default: float = 1.0
+    # Resource-planning heuristics (no ML; simple ratios).
+    officers_per_attendees: int = 500
+    barricades_per_closure: int = 4
+    tow_per_attendees: int = 10000
+
     # --- Dedicated text-severity model served by /nlp/severity ---
     # Trained on ONLY text-derivable features so train == serve (no lat/lon/rainfall skew).
     severity_text_enabled: bool = True
@@ -78,6 +92,16 @@ class Settings(BaseSettings):
     def cors_origins(self) -> list[str]:
         """Parsed allow-list from the comma-separated cors_allow_origins setting."""
         return [o.strip() for o in self.cors_allow_origins.split(",") if o.strip()]
+
+    @property
+    def event_multipliers(self) -> dict[str, float]:
+        """Parsed event-type -> multiplier map (falls back to {'normal': 1.0} on bad JSON)."""
+        import json
+        try:
+            data = json.loads(self.event_multipliers_json)
+            return {str(k): float(v) for k, v in data.items()}
+        except (ValueError, TypeError):
+            return {"normal": 1.0}
 
     def ensure_dirs(self) -> None:
         # Postgres holds incident data now; we still keep local dirs for the raw CSV (ingest

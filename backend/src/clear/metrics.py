@@ -101,3 +101,33 @@ def clearance_drift_psi(conn, recent_days: int = 14) -> dict:
     psi = population_stability_index(baseline, recent)
     db.record_metric(conn, "clearance", "duration_psi", psi)
     return {"psi": round(psi, 4), "n_recent": len(recent), "n_baseline": len(baseline)}
+
+def clearance_error_by_event(conn) -> dict:
+	"""Predicted-vs-actual clearance MAE grouped by event_cause (post-event accuracy).
+	Reuses the existing predictions log; additive and read-only."""
+	rows = conn.execute(
+		"""SELECT i.event_cause AS cause, p.output_json AS out, i.duration_minutes AS actual
+		   FROM predictions p JOIN incidents i ON p.event_id = i.event_id
+		   WHERE p.model = 'clearance' AND i.event_observed = 1
+		     AND i.admin_close = 0 AND i.duration_minutes IS NOT NULL"""
+	).fetchall()
+	buckets: dict[str, list[float]] = {}
+	for r in rows:
+		try:
+			pred = json.loads(r["out"]).get("median_minutes")
+			if pred is None:
+				continue
+			cause = r["cause"] or "others"
+			buckets.setdefault(cause, []).append(abs(float(pred) - float(r["actual"])))
+		except (ValueError, TypeError):
+			continue
+	by_event = [
+		{"event_cause": cause, "mae_minutes": round(float(np.mean(errs)), 2), "n": len(errs)}
+		for cause, errs in sorted(buckets.items())
+	]
+	overall = [e for errs in buckets.values() for e in errs]
+	return {
+		"by_event": by_event,
+		"overall_mae_minutes": round(float(np.mean(overall)), 2) if overall else None,
+		"n": len(overall),
+	}
