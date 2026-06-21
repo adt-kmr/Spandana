@@ -144,4 +144,19 @@ export type RainRisk = {
   };
 };
 
+export interface NlpSeverityRequest {
+  text: string;
+  event_cause?: string | null;
+  corridor?: string;
+  latitude?: number;
+  longitude?: number;
+  comment?: string;
+}
+export interface NlpSeverityResult {
+  band: "low" | "medium" | "high" | "critical";
+  confidence: number;
+  source?: "precomputed" | "nearest" | "default";
+}
+
+
 

@@ -7,13 +7,12 @@ import json
 import re
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from fastapi import Depends, FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware   # <-- add this line
 
 from . import db
 from .auth import require_scope
@@ -31,7 +30,7 @@ from .validation import (
     validate_forecast,
     validate_severity,
 )
-from .nlp_corpus import cause_for_phrase
+
 
 log = configure_logging()
 
@@ -103,10 +102,8 @@ def _load_models(app: FastAPI) -> None:
     from .models.clearance import ClearanceModel
     from .models.forecast import ForecastModel
     from .models.severity import SeverityModel
-    from .models.severity_text import SeverityTextModel
     for attr, loader in (
         ("severity", SeverityModel.load),
-        ("severity_text", SeverityTextModel.load),
         ("clearance", ClearanceModel.load),
         ("forecast", ForecastModel.load),
     ):
@@ -347,33 +344,16 @@ def create_app() -> FastAPI:
         body: NlpSeverityRequest,
         _claims=Depends(require_scope("citizen")),
     ):
-        """Live multilingual triage: free text -> calibrated severity band + confidence.
-        Uses the MuRIL embedding cache (no torch). Cache hit => real multilingual signal;
-        cache miss with torch absent => embeddings degrade to zero and the model falls back
-        to its non-text features (graceful, never 500s on that account).
+        """Multilingual triage via a precomputed, torch-free response table.
+        The model is NEVER loaded at request time (Render memory): we serve
+        normalize -> exact -> nearest cached phrase -> safe default.
         """
-        sev = getattr(app.state, "severity_text", None) or getattr(app.state, "severity", None)
-        if sev is None:
-            raise HTTPException(status_code=503, detail="severity model unavailable")
-        text = sanitize_text(body.text)
-        # Multilingual cause: caller value wins; else infer from the corpus phrase; else "others".
-        cause = body.event_cause or cause_for_phrase(text) or "others"
-        record: dict = {
-            "event_id": "NLP-LIVE",
-            "start_datetime": datetime.now(timezone.utc).isoformat(),
-            "event_cause": cause,
-            "corridor": body.corridor or "unknown",
-            "description": text,
-            "comment": sanitize_text(body.comment) if body.comment else "",
-            "status": "open",
-        }
-        # Only set coords when provided; omitting them lets the model use its trained lat/lon fill.
-        if body.latitude is not None:
-            record["latitude"] = body.latitude
-        if body.longitude is not None:
-            record["longitude"] = body.longitude
-        raw = sev.predict_one(record)
-        return validate_severity(raw)
+        from .nlp_responses import lookup
+        result = lookup(sanitize_text(body.text))
+        # validate_severity asserts band in SEVERITY_BANDS and confidence in [0,1];
+        # it returns only {band, confidence}, so we return our richer dict (keeps `source`).
+        validate_severity(result)
+        return result
 
     @app.post("/citizen/report")
     def citizen_report(

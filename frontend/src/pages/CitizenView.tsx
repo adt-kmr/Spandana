@@ -7,6 +7,7 @@ import SlaWidget from '../components/SlaWidget';
 import CitizenReportForm from '../components/CitizenReportForm';
 import DiversionAid from '../components/DiversionAid';
 import RouteRainCheck from '../components/RouteRainCheck';
+import CitizenSeverityCheck from '../components/CitizenSeverityCheck';
 import type { IncidentRow } from '../types';
 
 export default function CitizenView() {
@@ -56,6 +57,7 @@ export default function CitizenView() {
            <div className="h-32 shrink-0 brutal-card border-[6px] bg-white p-4">
              <SlaWidget />
            </div>
+           <CitizenSeverityCheck />
         </div>
 
         {/* Middle: Map */}
