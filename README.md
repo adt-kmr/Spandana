@@ -69,7 +69,7 @@ SPANDANA is a full-stack project (Team **FlipKart-GridLock**, Thapar Institute) 
 - **Honest outputs.** Confidence is *calibrated*; clearance is a *censored-survival interval* (P10–P90), not a fake point ETA; SLA is computed only over incidents that physically resolved.
 - **Env-driven secrets.** Every token/key comes from environment variables only — nothing hard-coded.
 
-> ⚠️ **Not ASTraM.** The codebase explicitly disclaims being the live Bengaluru Traffic Police product. It is a decision-support layer built on synthetic (or anonymized) incident data.
+> ⚠️ **Not ASTraM.** The codebase explicitly disclaims being the live Bengaluru Traffic Police product. It is a decision-support layer built on Bengaluru's data.
 
 ---
 
