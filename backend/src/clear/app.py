@@ -190,6 +190,7 @@ def create_app() -> FastAPI:
     
     @app.get("/healthz")
     def healthz() -> dict:
+        from .nlp_responses import load as _load_nlp_table
         return {
             "status": "ok",
             "models": {
@@ -197,6 +198,7 @@ def create_app() -> FastAPI:
                 "severity_text": getattr(app.state, "severity_text", None) is not None,
                 "clearance": getattr(app.state, "clearance", None) is not None,
                 "forecast": getattr(app.state, "forecast", None) is not None,
+                "nlp_severity": bool(_load_nlp_table()),
             },
             "models_error": getattr(app.state, "models_error", {}),
         }
