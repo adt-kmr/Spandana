@@ -6,7 +6,7 @@ import DiversionAid from './DiversionAid';
 import RainRiskWidget from './RainRiskWidget';
 
 export default function IncidentDetails({ incident }: { incident: IncidentRow }) {
-  const { data: health } = useQuery({
+  const { data: health, isLoading: isHealthLoading, isError: isHealthError } = useQuery({
     queryKey: ['health'],
     queryFn: () => ClearApi.health(),
   });
@@ -41,7 +41,13 @@ export default function IncidentDetails({ incident }: { incident: IncidentRow })
             Severity Analysis
           </div>
           
-          {!severityUp ? (
+          {isHealthLoading ? (
+            <div className="text-slate-400 text-sm animate-pulse">Checking…</div>
+          ) : isHealthError || !health ? (
+            <div className="flex items-center gap-2 text-red-600 bg-red-50 p-2 rounded text-sm">
+              <ServerCrash className="w-4 h-4" /> Can't reach service
+            </div>
+          ) : !severityUp ? (
             <div className="flex items-center gap-2 text-amber-600 bg-amber-50 p-2 rounded text-sm">
               <ServerCrash className="w-4 h-4" /> Model Offline
             </div>
@@ -68,7 +74,13 @@ export default function IncidentDetails({ incident }: { incident: IncidentRow })
             Clearance Estimate
           </div>
 
-          {!clearanceUp ? (
+          {isHealthLoading ? (
+            <div className="text-slate-400 text-sm animate-pulse">Checking…</div>
+          ) : isHealthError || !health ? (
+            <div className="flex items-center gap-2 text-red-600 bg-red-50 p-2 rounded text-sm">
+              <ServerCrash className="w-4 h-4" /> Can't reach service
+            </div>
+          ) : !clearanceUp ? (
             <div className="flex items-center gap-2 text-amber-600 bg-amber-50 p-2 rounded text-sm">
               <ServerCrash className="w-4 h-4" /> Model Offline
             </div>

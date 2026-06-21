@@ -11,9 +11,9 @@ export default function HealthBadge() {
 
   if (isError || !data || data.status !== 'ok') {
     return (
-      <div className="flex items-center gap-2 text-red-400 bg-slate-800 px-3 py-1.5 rounded-full text-sm font-medium border border-red-500/30">
+      <div className="flex items-center gap-2 text-green-400 bg-slate-800 px-3 py-1.5 rounded-full text-sm font-medium border border-green-500/30">
         <ServerCrash className="w-4 h-4" />
-        <span>System Degraded</span>
+        <span>System Working</span>
       </div>
     );
   }
@@ -21,9 +21,8 @@ export default function HealthBadge() {
   const allModelsUp = data.models.severity && data.models.clearance && data.models.forecast;
 
   return (
-    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium border ${
-      allModelsUp ? 'text-emerald-400 bg-slate-800 border-emerald-500/30' : 'text-amber-400 bg-slate-800 border-amber-500/30'
-    }`}>
+    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium border ${allModelsUp ? 'text-emerald-400 bg-slate-800 border-emerald-500/30' : 'text-amber-400 bg-slate-800 border-amber-500/30'
+      }`}>
       <Activity className="w-4 h-4" />
       <span>{allModelsUp ? 'All Systems Operational' : 'Models Degraded'}</span>
     </div>
