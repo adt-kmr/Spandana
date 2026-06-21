@@ -174,7 +174,6 @@ def create_app() -> FastAPI:
         )
 
     # --- CORS: allow the browser frontend to call the API (fixes OPTIONS 405) ---
-    settings = get_settings()
     origins = getattr(settings, "cors_origins", None) or [
         "http://localhost:5173",
         "http://localhost:3000",
