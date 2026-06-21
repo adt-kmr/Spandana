@@ -102,6 +102,7 @@ def _load_models(app: FastAPI) -> None:
     from .models.clearance import ClearanceModel
     from .models.forecast import ForecastModel
     from .models.severity import SeverityModel
+    app.state.models_error = {}
     for attr, loader in (
         ("severity", SeverityModel.load),
         ("clearance", ClearanceModel.load),
@@ -111,7 +112,8 @@ def _load_models(app: FastAPI) -> None:
             setattr(app.state, attr, loader())
         except Exception as exc:  # noqa: BLE001 - missing/broken model -> degraded mode
             setattr(app.state, attr, None)
-            log.warning("model '%s' unavailable, degrading: %s", attr, exc)
+            app.state.models_error[attr] = f"{type(exc).__name__}: {str(exc)}"
+            log.exception("model '%s' unavailable, degrading", attr)
 
 
 @asynccontextmanager
@@ -197,6 +199,7 @@ def create_app() -> FastAPI:
                 "clearance": getattr(app.state, "clearance", None) is not None,
                 "forecast": getattr(app.state, "forecast", None) is not None,
             },
+            "models_error": getattr(app.state, "models_error", {}),
         }
 
     @app.post("/ingest")
