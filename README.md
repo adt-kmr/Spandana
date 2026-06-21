@@ -294,8 +294,7 @@ flowchart TD
 | GET | `/admin/drift` | operator | Out-of-sample MAE + PSI drift report. (CLI/curl.) |
 | POST | `/admin/retrain` | operator | Trigger the retrain lifecycle. (CLI/curl.) |
 
-> 🔌 **Frontend ↔ backend contract:** `api.ts` exposes typed `ClearApi` methods. Four operator endpoints — `/nlp/severity`, `/metrics/backfill`, `/admin/drift`, `/admin/retrain` — are intentionally **not** wired into the client (operated via curl/CLI). The API base is `VITE_CLEAR_API_BASE` (falls back to `http://localhost:8000`); a failed fetch surfaces as `ApiError(0, …)` → the UI’s red “System Degraded” badge.
-
+> 🔌 **Frontend ↔ backend contract:** `api.ts` exposes typed `ClearApi` methods. Three operator endpoints — `/metrics/backfill`, `/admin/drift`, `/admin/retrain` — are intentionally **not** wired into the client (operated via curl/CLI). The API base is `VITE_CLEAR_API_BASE` (falls back to `http://localhost:8000`); a failed fetch surfaces as `ApiError(0, …)` → the UI’s red “System Degraded” badge.
 ---
 
 ## 10. Cross-cutting backend behavior
