@@ -47,3 +47,26 @@ code {
     @apply px-3 py-1 text-sm font-bold border-2 border-black rounded-full;
   }
 }
+
+/* SPANDANA hero: traffic-signal lamp cycle (snap, no glow) + letter drop-in */
+@keyframes spandanaLampRed {
+0%, 33.33%    { opacity: 1;    transform: scale(1.1); }
+33.34%, 100%  { opacity: 0.18; transform: scale(0.85); }
+}
+@keyframes spandanaLampAmber {
+0%, 33.33%    { opacity: 0.18; transform: scale(0.85); }
+33.34%, 66.66%{ opacity: 1;    transform: scale(1.1); }
+66.67%, 100%  { opacity: 0.18; transform: scale(0.85); }
+}
+@keyframes spandanaLampGreen {
+0%, 66.66%    { opacity: 0.18; transform: scale(0.85); }
+66.67%, 100%  { opacity: 1;    transform: scale(1.1); }
+}
+@keyframes spandanaLetterIn {
+0%   { opacity: 0; transform: translateY(0.45em); }
+100% { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+[data-spandana-letter], [data-spandana-lamp] { animation: none !important; opacity: 1 !important; transform: none !important; }
+}
+
