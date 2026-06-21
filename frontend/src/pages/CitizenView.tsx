@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, X, AlertTriangle } from 'lucide-react';
 import IncidentQueue from '../components/IncidentQueue';
 import MapLayer from '../components/MapLayer';
 import SlaWidget from '../components/SlaWidget';
@@ -11,6 +11,21 @@ import type { IncidentRow } from '../types';
 
 export default function CitizenView() {
   const [selectedIncident, setSelectedIncident] = useState<IncidentRow | null>(null);
+  const [reportOpen, setReportOpen] = useState(false);
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') setReportOpen(false); };
+    if (reportOpen) {
+      document.body.style.overflow = 'hidden';
+      window.addEventListener('keydown', handleEsc);
+    } else {
+      document.body.style.overflow = 'auto';
+    }
+    return () => {
+      document.body.style.overflow = 'auto';
+      window.removeEventListener('keydown', handleEsc);
+    };
+  }, [reportOpen]);
 
   return (
     <div className="min-h-screen lg:h-[100dvh] lg:overflow-hidden flex flex-col p-4 md:p-8 gap-6 max-w-[1600px] mx-auto w-full">
@@ -27,12 +42,16 @@ export default function CitizenView() {
       <div className="grid grid-cols-12 gap-6 flex-1 min-h-0 overflow-y-auto lg:overflow-hidden pb-4 lg:pb-0">
         {/* Left: Report Form & SLA */}
         <div className="col-span-12 md:col-span-4 lg:col-span-3 flex flex-col gap-6 min-h-[500px] lg:min-h-0">
-           <div className="brutal-card border-[6px] bg-brutal-blue p-4 flex-1 flex flex-col overflow-hidden">
-             <h2 className="text-2xl font-black uppercase mb-4 border-b-4 border-black pb-2 text-white">Report</h2>
-             <div className="bg-white border-4 border-black p-4 rounded-lg flex-1 overflow-y-auto shadow-[4px_4px_0_0_rgba(0,0,0,1)]">
-               <CitizenReportForm />
-             </div>
-           </div>
+          <button
+            onClick={() => setReportOpen(true)}
+            className="brutal-card border-[6px] bg-brutal-blue p-6 text-left flex items-center justify-between gap-4 hover:bg-brutal-yellow transition-colors group shrink-0"
+          >
+            <div>
+              <h2 className="text-2xl font-black uppercase text-white group-hover:text-black">Report an Incident</h2>
+              <p className="font-bold text-sm text-white group-hover:text-black mt-1">Tap to open the report form.</p>
+            </div>
+            <AlertTriangle size={32} className="stroke-[3] text-white group-hover:text-black shrink-0" />
+          </button>
            <RouteRainCheck />
            <div className="h-32 shrink-0 brutal-card border-[6px] bg-white p-4">
              <SlaWidget />
@@ -59,6 +78,28 @@ export default function CitizenView() {
           </div>
         </div>
       </div>
+
+      {reportOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setReportOpen(false)}
+          />
+          <div className="brutal-card bg-brutal-bg w-full max-w-2xl z-10 p-6 md:p-8 flex flex-col max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6 border-b-4 border-black pb-4">
+              <h2 className="text-3xl md:text-4xl font-black uppercase tracking-tighter">Report an Incident</h2>
+              <button
+                onClick={() => setReportOpen(false)}
+                className="brutal-btn bg-brutal-pink text-white hover:bg-white hover:text-black p-2"
+                aria-label="Close"
+              >
+                <X size={24} className="stroke-[3]" />
+              </button>
+            </div>
+            <CitizenReportForm />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

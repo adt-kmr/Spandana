@@ -1,42 +1,57 @@
-"""Phase 4: Diversion generator — static alternate-corridor lookup with travel-time deltas.
+"""Phase 4: Diversion generator — computed alternate-corridor lookup via haversine distance.
 
-Simplest graph-free routing: each primary corridor maps to ranked alternates, each tagged with
-an average travel-time delta (minutes vs the blocked route). No ML, no live simulation.
+Computes nearest alternate corridors dynamically using straight-line distance.
 """
 from __future__ import annotations
+import math
+from .config import get_settings
 
-# corridor (lowercased) -> ordered alternates. delta_minutes = avg extra travel time vs the
-# blocked primary. Extend this table as you map more corridors.
-_DIVERSIONS: dict[str, list[dict]] = {
-	"mg road": [
-		{"corridor": "Brigade Road", "rank": "primary", "delta_minutes": 6},
-		{"corridor": "Residency Road", "rank": "secondary", "delta_minutes": 11},
-	],
-	"residency road": [
-		{"corridor": "Richmond Road", "rank": "primary", "delta_minutes": 7},
-		{"corridor": "Brigade Road", "rank": "secondary", "delta_minutes": 12},
-	],
-	"mysore road": [
-		{"corridor": "Magadi Road", "rank": "primary", "delta_minutes": 9},
-		{"corridor": "Kanakapura Road", "rank": "secondary", "delta_minutes": 15},
-	],
-	"orr east": [
-		{"corridor": "Sarjapur Road", "rank": "primary", "delta_minutes": 14},
-		{"corridor": "Old Madras Road", "rank": "secondary", "delta_minutes": 19},
-	],
-}
+AVG_DETOUR_SPEED_KMPH = 18.0  # representative Bengaluru arterial speed for delta estimates
+MAX_ALTERNATES = 3
+
+def _haversine_km(a: list[float], b: list[float]) -> float:
+    R = 6371.0
+    lat1, lon1, lat2, lon2 = map(math.radians, [a[0], a[1], b[0], b[1]])
+    dlat, dlon = lat2 - lat1, lon2 - lon1
+    h = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
+    return 2 * R * math.asin(math.sqrt(h))
+
+def _display(name: str) -> str:
+    return name.strip().title()
 
 def diversions_for(corridor: str) -> dict:
-	alts = _DIVERSIONS.get((corridor or "").strip().lower(), [])
-	return {
-		"blocked_corridor": corridor,
-		"has_diversion": bool(alts),
-		"alternates": alts,
-		"note": (
-			"Static alternate corridors with average travel-time delta (minutes)."
-			if alts else "No predefined diversion for this corridor."
-		),
-	}
+    coords = get_settings().corridor_latlon
+    key = (corridor or "").strip().lower()
+    origin = coords.get(key)
+    if origin is None:
+        return {
+            "blocked_corridor": corridor,
+            "has_diversion": False,
+            "alternates": [],
+            "note": "No location data available for this corridor.",
+        }
+    ranked = sorted(
+        ((name, _haversine_km(origin, ll)) for name, ll in coords.items() if name != key),
+        key=lambda t: (t[1], t[0]),
+    )[:MAX_ALTERNATES]
+    alternates = [
+        {
+            "corridor": _display(name),
+            "rank": "primary" if i == 0 else "secondary",
+            "delta_minutes": max(1, round(dist_km / AVG_DETOUR_SPEED_KMPH * 60)),
+        }
+        for i, (name, dist_km) in enumerate(ranked)
+    ]
+    return {
+        "blocked_corridor": corridor,
+        "has_diversion": bool(alternates),
+        "alternates": alternates,
+        "note": (
+            "Computed nearest alternate corridors by straight-line distance (haversine); "
+            "travel-time deltas are estimates."
+            if alternates else "No alternate corridors available."
+        ),
+    }
 
 def all_corridors_with_diversions() -> list[str]:
-	return sorted(_DIVERSIONS.keys())
+    return sorted(_display(name) for name in get_settings().corridor_latlon.keys())
