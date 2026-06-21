@@ -467,5 +467,5 @@ Stages live in `model_registry`; the live serving pointer is the unversioned `<m
 
 ## 19. Team
 
-**Jaiveer Singh** · **Harkamal Singh** · **Aditya (Thetsu)** · **Dhruv Srivastava**
-Thapar Institute of Engineering and Technology.
+**Jaiveer Singh** · **Harkamal Singh** · **Aditya (Thetsu)** · **Dhruv Srivastava**.
+- Thapar Institute of Engineering and Technology.
