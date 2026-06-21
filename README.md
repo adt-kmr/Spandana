@@ -1,3 +1,7 @@
+
+
+
+
 # SPANDANA — Clearance & Logistics Engine for Authority Response
 
 > **SPANDANA** turns raw Bengaluru traffic-incident reports into ranked, confidence-aware recommendations — *how severe* an incident is, *how long* it will take to clear, *where* risk is rising in the next 3 hours, *which* units to dispatch, and *what* diversions and rain-clog risks to expect.
@@ -31,7 +35,12 @@
 19. [Team](#19-team)
 
 ---
+## Project Demo
 
+<video src="https://github.com/user-attachments/assets/45c44456-7aab-4d9e-ab41-3c88f5c75ffc" autoplay loop muted width="100%" style="max-width: 100%;">
+</video>
+
+---
 ## 1. In plain English
 
 Imagine a traffic control room in Bengaluru. Reports pour in: a breakdown on Hosur Road, a tree fall near MG Road, water-logging on Sarjapur Road. Operators have to decide — instantly — *which incident matters most, how long it will tie up the road, and which patrol to send.* Today that’s done from memory and gut feel.
@@ -467,5 +476,5 @@ Stages live in `model_registry`; the live serving pointer is the unversioned `<m
 
 ## 19. Team
 
-**Jaiveer Singh** · **Harkamal Singh** · **Aditya (Thetsu)** · **Dhruv Srivastava**
-Thapar Institute of Engineering and Technology.
+**Jaiveer Singh** · **Harkamal Singh** · **Aditya (Thetsu)** · **Dhruv Srivastava**.
+- Thapar Institute of Engineering and Technology.
