@@ -294,8 +294,8 @@ def create_app() -> FastAPI:
 
     @app.get("/hotspots")
     def hotspots(
-        min_size: Optional[int] = None,
-        limit: Optional[int] = None,
+        min_size: int | None = None,
+        limit: int | None = None,
         scope: str = Depends(require_scope("operator")),
     ) -> dict:
         # min_size / limit trim the payload server-side: the full batch can emit hundreds of
