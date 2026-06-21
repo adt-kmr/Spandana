@@ -28,7 +28,7 @@ export default function CitizenView() {
   }, [reportOpen]);
 
   return (
-    <div className="min-h-screen lg:h-[100dvh] lg:overflow-hidden flex flex-col p-4 md:p-8 gap-6 max-w-[1600px] mx-auto w-full">
+    <div className="min-h-screen flex flex-col p-4 md:p-8 gap-6 max-w-[1600px] mx-auto w-full">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between brutal-card bg-brutal-green p-6 border-[6px] gap-4">
         <div>
           <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tighter drop-shadow-[2px_2px_0_rgba(0,0,0,1)] text-white">Citizen Portal</h1>
@@ -39,7 +39,7 @@ export default function CitizenView() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-12 gap-6 flex-1 min-h-0 overflow-y-auto lg:overflow-hidden pb-4 lg:pb-0">
+      <div className="grid grid-cols-12 gap-6 pb-4">
         {/* Left: Report Form & SLA */}
         <div className="col-span-12 md:col-span-4 lg:col-span-3 flex flex-col gap-6 min-h-[500px] lg:min-h-0">
           <button
@@ -59,7 +59,7 @@ export default function CitizenView() {
         </div>
 
         {/* Middle: Map */}
-        <div className="col-span-12 md:col-span-8 lg:col-span-6 flex flex-col gap-6 min-h-[500px] lg:min-h-0">
+        <div className="col-span-12 md:col-span-8 lg:col-span-6 flex flex-col gap-6 min-h-[500px] lg:h-[70vh]">
           <div className="flex-1 bg-white border-[6px] border-black rounded-xl shadow-[8px_8px_0_0_rgba(0,0,0,1)] relative overflow-hidden flex flex-col">
              <MapLayer scope="citizen" />
           </div>
@@ -71,7 +71,7 @@ export default function CitizenView() {
         </div>
 
         {/* Right: Incident Queue */}
-        <div className="col-span-12 lg:col-span-3 brutal-card border-[6px] overflow-hidden flex flex-col p-4 bg-white min-h-[500px] lg:min-h-0">
+        <div className="col-span-12 lg:col-span-3 brutal-card border-[6px] overflow-hidden flex flex-col p-4 bg-white min-h-[500px] lg:h-[70vh]">
           <h2 className="text-2xl font-black uppercase mb-4 border-b-4 border-black pb-2">Active Feed</h2>
           <div className="flex-1 overflow-y-auto">
             <IncidentQueue scope="citizen" onSelect={setSelectedIncident} />
