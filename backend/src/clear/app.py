@@ -16,13 +16,13 @@ from pydantic import BaseModel, Field
 from . import db
 from .auth import require_scope
 from .config import get_settings
-from .ratelimit import RateLimitMiddleware
 from .degradation import fifo_queue, stale_corridor_risk
 from .ingestion import ingest_one
 from .logging_setup import configure_logging
 from .metrics import clearance_prediction_error
 from .models.dispatch import suggest as dispatch_suggest
 from .models.hotspot import run_batch as hotspot_batch
+from .ratelimit import RateLimitMiddleware
 from .validation import (
     OutputValidationError,
     validate_clearance,
@@ -345,7 +345,7 @@ def create_app() -> FastAPI:
     def nlp_severity(
         body: NlpSeverityRequest,
         _claims=Depends(require_scope("citizen")),
-    ):
+    ) -> dict:
         """Multilingual triage via a precomputed, torch-free response table.
         The model is NEVER loaded at request time (Render memory): we serve
         normalize -> exact -> nearest cached phrase -> safe default.
