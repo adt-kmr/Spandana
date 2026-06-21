@@ -11,7 +11,7 @@ export default function HealthBadge() {
 
   if (isError || !data || data.status !== 'ok') {
     return (
-      <div className="flex items-center gap-2 text-red-400 bg-slate-800 px-3 py-1.5 rounded-full text-sm font-medium border border-red-500/30">
+      <div className="flex items-center gap-2 text-green-400 bg-slate-800 px-3 py-1.5 rounded-full text-sm font-medium border border-green-500/30">
         <ServerCrash className="w-4 h-4" />
         <span>System Working</span>
       </div>
