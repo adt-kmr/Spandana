@@ -88,9 +88,9 @@ class NlpSeverityRequest(BaseModel):
 
 
 class ResourcePlanRequest(BaseModel):
-	attendees: int = Field(ge=0)
-	road_closures: int = Field(default=0, ge=0)
-	event_type: str | None = None
+    attendees: int = Field(ge=0)
+    road_closures: int = Field(default=0, ge=0)
+    event_type: str | None = None
 
 class EventImpactRequest(BaseModel):
 	event_type: str | None = None
