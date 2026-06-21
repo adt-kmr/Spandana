@@ -46,7 +46,7 @@ _INJECTION_PATTERNS = re.compile(
 _NON_RANKABLE_CORRIDORS = {"non-corridor", "unknown", "none", ""}
 
 
-def sanitize_text(text: Optional[str], max_len: int = 1000) -> str:
+def sanitize_text(text: str | None, max_len: int = 1000) -> str:
     """Prompt-injection guard for free text before any downstream LLM use (constraint 16)."""
     if not text:
         return ""
@@ -93,9 +93,9 @@ class ResourcePlanRequest(BaseModel):
     event_type: str | None = None
 
 class EventImpactRequest(BaseModel):
-	event_type: str | None = None
-	base_minutes: float | None = None
-	base_risk: float | None = None
+    event_type: str | None = None
+    base_minutes: float | None = None
+    base_risk: float | None = None
 
 
 def _load_models(app: FastAPI) -> None:
