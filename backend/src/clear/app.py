@@ -8,7 +8,6 @@ import re
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
