@@ -9,6 +9,8 @@ export default function IncidentDetails({ incident }: { incident: IncidentRow })
   const { data: health, isLoading: isHealthLoading, isError: isHealthError } = useQuery({
     queryKey: ['health'],
     queryFn: () => ClearApi.health(),
+    refetchInterval: 30000, // re-check every 30s so a transient boot-time reading self-corrects
+    retry: 3,
   });
 
   const severityUp = health?.models?.severity;
