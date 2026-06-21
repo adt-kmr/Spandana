@@ -35,7 +35,6 @@
 19. [Team](#19-team)
 
 ---
-## Project Demo
 
 <video src="https://github.com/user-attachments/assets/45c44456-7aab-4d9e-ab41-3c88f5c75ffc" autoplay loop muted width="100%" style="max-width: 100%;">
 </video>
