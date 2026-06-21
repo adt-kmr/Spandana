@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
+import { Analytics } from '@vercel/analytics/react';
 import OperatorDashboard from './pages/OperatorDashboard';
 import OperatorStats from './pages/OperatorStats';
 import OperatorLogin from './pages/OperatorLogin';
@@ -59,6 +60,7 @@ function App() {
           </Routes>
         </div>
       </BrowserRouter>
+      <Analytics />
     </QueryClientProvider>
   );
 }
