@@ -27,9 +27,12 @@ RUN mkdir -p data/models && cp data/seed/muril_cache.joblib data/models/muril_ca
 
 # Build with MuRIL ON so the text model learns multilingual signal, then FREEZE the
 # precomputed /nlp/severity response table. Both run at BUILD time only.
-ENV CLEAR_USE_MURIL=1
-RUN CLEAR_SKIP_MODEL_REGISTRY=1 CLEAR_USE_MURIL=1 python -m clear.train all \
-    && CLEAR_USE_MURIL=1 python -m clear.nlp_responses \
+ENV CLEAR_USE_MURIL=1 \
+    CLEAR_RAW_DATA_DIR=/app/data/raw \
+    CLEAR_MODEL_DIR=/app/data/models \
+    CLEAR_MURIL_CACHE_PATH=/app/data/models/muril_cache.joblib
+RUN CLEAR_SKIP_MODEL_REGISTRY=1 python -m clear.train all \
+    && python -m clear.nlp_responses \
     && test -f data/models/forecast.joblib \
     && test -f data/models/severity.joblib \
     && test -f data/models/nlp_responses.joblib
@@ -46,7 +49,9 @@ RUN apt-get update \
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
-    CLEAR_USE_MURIL=0
+    CLEAR_USE_MURIL=0 \
+    CLEAR_RAW_DATA_DIR=/app/data/raw \
+    CLEAR_MODEL_DIR=/app/data/models
 
 WORKDIR /app
 
