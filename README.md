@@ -2,7 +2,7 @@
 
 
 
-# SPANDANA — Clearance & Logistics Engine for Authority Response
+# SPANDANA: Clearance & Logistics Engine for Authority Response
 
 > **SPANDANA** turns raw Bengaluru traffic-incident reports into ranked, confidence-aware recommendations — *how severe* an incident is, *how long* it will take to clear, *where* risk is rising in the next 3 hours, *which* units to dispatch, and *what* diversions and rain-clog risks to expect.
 >
