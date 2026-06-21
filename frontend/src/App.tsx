@@ -8,6 +8,7 @@ import CitizenView from './pages/CitizenView';
 import { LandingPage } from './pages/LandingPage';
 import HealthBadge from './components/HealthBadge';
 import { isOperatorAuthed } from './auth';
+import { Analytics } from "@vercel/analytics/react"
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -59,6 +60,7 @@ function App() {
           </Routes>
         </div>
       </BrowserRouter>
+      <Analytics />
     </QueryClientProvider>
   );
 }
