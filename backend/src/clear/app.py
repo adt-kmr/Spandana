@@ -396,49 +396,49 @@ def create_app() -> FastAPI:
 
     @app.get("/events/types")
     def event_types(scope: str = Depends(require_scope("operator", "citizen"))) -> dict:
-    	from .event_intel import known_event_types
-    	return {"event_types": known_event_types()}
+        from .event_intel import known_event_types
+        return {"event_types": known_event_types()}
 
     @app.post("/events/impact")
     def events_impact(
-    	req: EventImpactRequest,
-    	scope: str = Depends(require_scope("operator", "citizen")),
+        req: EventImpactRequest,
+        scope: str = Depends(require_scope("operator", "citizen")),
     ) -> dict:
-    	from .event_intel import apply_impact
-    	return apply_impact(req.event_type, base_minutes=req.base_minutes, base_risk=req.base_risk)
+        from .event_intel import apply_impact
+        return apply_impact(req.event_type, base_minutes=req.base_minutes, base_risk=req.base_risk)
 
     @app.post("/resources/plan")
     def resources_plan(
-    	req: ResourcePlanRequest,
-    	scope: str = Depends(require_scope("operator")),
+        req: ResourcePlanRequest,
+        scope: str = Depends(require_scope("operator")),
     ) -> dict:
-    	from .resource_planner import plan_resources
-    	return plan_resources(req.attendees, req.road_closures, req.event_type)
+        from .resource_planner import plan_resources
+        return plan_resources(req.attendees, req.road_closures, req.event_type)
 
     @app.get("/diversions")
     def diversions(
-    	corridor: str,
-    	scope: str = Depends(require_scope("operator", "citizen")),
+        corridor: str,
+        scope: str = Depends(require_scope("operator", "citizen")),
     ) -> dict:
-    	from .diversion import diversions_for
-    	return diversions_for(corridor)
+        from .diversion import diversions_for
+        return diversions_for(corridor)
 
     @app.get("/weather/rain-risk")
     def weather_rain_risk(
-    	corridor: str,
-    	scope: str = Depends(require_scope("operator", "citizen")),
+        corridor: str,
+        scope: str = Depends(require_scope("operator", "citizen")),
     ) -> dict:
-    	from .rain_clog import corridor_rain_risk
-    	return corridor_rain_risk(corridor)
+        from .rain_clog import corridor_rain_risk
+        return corridor_rain_risk(corridor)
 
     @app.get("/metrics/by-event")
     def metrics_by_event(scope: str = Depends(require_scope("operator"))) -> dict:
-    	from .metrics import clearance_error_by_event
-    	conn = db.get_conn()
-    	try:
-    		return clearance_error_by_event(conn)
-    	finally:
-    		conn.close()
+        from .metrics import clearance_error_by_event
+        conn = db.get_conn()
+        try:
+            return clearance_error_by_event(conn)
+        finally:
+            conn.close()
 
     @app.get("/metrics")
     def metrics_endpoint(scope: str = Depends(require_scope("operator"))) -> dict:
