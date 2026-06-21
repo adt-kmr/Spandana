@@ -36,7 +36,7 @@ export const LandingPage: React.FC = () => {
 
       {/* Navigation - sticky as requested */}
       <nav className="p-6 border-b-4 border-black bg-white flex justify-between items-center sticky top-0 z-50">
-        <div className="text-3xl font-black tracking-tighter">CLEAR.</div>
+        <div className="text-3xl font-black tracking-tighter">SPANDANA.</div>
         <div className="space-x-4 flex items-center">
           <Link to="/citizen" className="font-bold hover:underline decoration-4 underline-offset-4 hidden sm:block">Citizen Portal</Link>
           <Link to="/operator" className="brutal-btn bg-brutal-yellow inline-flex items-center gap-2 py-2 px-4">
@@ -57,11 +57,43 @@ export const LandingPage: React.FC = () => {
         <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/50 to-[#0a0e1a] pointer-events-none" />
 
         <div className="relative z-10 max-w-5xl mx-auto px-6 text-center">
-          <h1 className="text-5xl md:text-7xl lg:text-8xl font-black uppercase tracking-tighter text-white drop-shadow-[4px_4px_0_rgba(0,0,0,1)] mb-8">
-            CLEAR
-            <br>
-            </br>Clearance & Logistics Engine for Authority Response
-          </h1>
+          <div className="flex flex-col items-center mb-8">
+            {/* Mini traffic light: red -> amber -> green, snapping in a loop */}
+            <div className="flex items-center gap-2 bg-black border-4 border-white rounded-full px-3 py-2 mb-6 shadow-[6px_6px_0_0_#000]">
+              <div
+                data-spandana-lamp
+                className="w-5 h-5 rounded-full bg-red-500 border-2 border-black"
+                style={{ animation: 'spandanaLampRed 4.5s steps(1) infinite' }}
+              />
+              <div
+                data-spandana-lamp
+                className="w-5 h-5 rounded-full bg-amber-500 border-2 border-black"
+                style={{ animation: 'spandanaLampAmber 4.5s steps(1) infinite' }}
+              />
+              <div
+                data-spandana-lamp
+                className="w-5 h-5 rounded-full bg-emerald-500 border-2 border-black"
+                style={{ animation: 'spandanaLampGreen 4.5s steps(1) infinite' }}
+              />
+            </div>
+            {/* SPANDANA wordmark — staggered per-letter drop-in */}
+            <h1 className="text-6xl md:text-8xl lg:text-9xl font-black uppercase tracking-tighter text-white drop-shadow-[4px_4px_0_rgba(0,0,0,1)] flex">
+              {'SPANDANA'.split('').map((ch, i) => (
+                <span
+                  key={i}
+                  data-spandana-letter
+                  className="inline-block"
+                  style={{ animation: 'spandanaLetterIn 0.5s ease-out both', animationDelay: `${i * 0.07}s` }}
+                >
+                  {ch}
+                </span>
+              ))}
+            </h1>
+            {/* Subtitle — text unchanged */}
+            <p className="text-lg md:text-2xl lg:text-3xl font-black uppercase tracking-tighter text-white drop-shadow-[3px_3px_0_rgba(0,0,0,1)] mt-4">
+              Clearance & Logistics Engine for Authority Response
+            </p>
+          </div>
           <p className="text-xl md:text-3xl font-bold text-white bg-black inline-block px-4 py-2 border-4 border-white shadow-[8px_8px_0_0_#000]">
             Bengaluru traffic breaks down in minutes.
           </p>
@@ -110,12 +142,12 @@ export const LandingPage: React.FC = () => {
       <section className="py-24 bg-brutal-bg border-b-8 border-black">
         <div className="max-w-6xl mx-auto px-6">
           <h2 className="text-5xl md:text-7xl font-black mb-16 text-center uppercase tracking-tighter text-black drop-shadow-[4px_4px_0_#ffdc00]">
-            The CLEAR Approach
+            The SPANDANA Approach
           </h2>
 
           <div className="max-w-4xl mx-auto mb-16 text-center">
             <p className="text-2xl font-bold border-4 border-black p-6 bg-white shadow-[8px_8px_0_0_#000]">
-              CLEAR is a decision-support engine that turns raw incident reports into ranked, confidence-aware recommendations. We advise—human operators confirm.
+              SPANDANA is a decision-support engine that turns raw incident reports into ranked, confidence-aware recommendations. We advise—human operators confirm.
             </p>
           </div>
 
@@ -178,7 +210,7 @@ export const LandingPage: React.FC = () => {
       {/* FOOTER */}
       <footer className="border-t-8 border-black bg-brutal-yellow py-12">
         <div className="max-w-6xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-6">
-          <div className="text-4xl font-black tracking-tighter">CLEAR.</div>
+          <div className="text-4xl font-black tracking-tighter">SPANDANA.</div>
           <div className="flex gap-8">
             <button
               onClick={() => setIsModalOpen(true)}
