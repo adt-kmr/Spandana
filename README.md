@@ -56,6 +56,8 @@ SPANDANA is the **decision-support layer** that sits beside the operator and ans
 
 The golden rule: **SPANDANA only suggests — the operator decides.** Nothing is ever actuated automatically. And every number is “honest”: confidence is calibrated, time estimates are ranges, and if a model is missing the system *degrades gracefully* (shows last-known data) instead of crashing.
 
+<img width="892" height="503" alt="Screenshot 2026-09-03 150451" src="https://github.com/user-attachments/assets/ca43c7ac-f285-402f-9da7-5300695115cd" />
+
 ---
 
 ## 2. What SPANDANA is (and is not)
@@ -196,6 +198,9 @@ FlipKart-GridLock/
 | `junction_cache` | Snap-to-OSM-node cache. |
 
 **Ingestion path (`ingestion.py`):** validate → idempotency (`ON CONFLICT (event_id) DO NOTHING`) → store, with bounded retries + exponential backoff and dead-lettering. Bulk CSV loads are vectorized and flushed in 1000-row `executemany` batches (one network round-trip per batch).
+
+
+<img width="889" height="466" alt="Screenshot 2026-09-03 150545" src="https://github.com/user-attachments/assets/6efdcbae-6731-4611-be3f-50d82e110ca1" />
 
 ---
 
