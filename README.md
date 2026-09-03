@@ -4,6 +4,9 @@
 
 # SPANDANA: Clearance & Logistics Engine for Authority Response
 
+<img width="703" height="393" alt="Screenshot 2026-09-03 154010" src="https://github.com/user-attachments/assets/6953c6ad-5694-4aea-a482-34581f0d9c3e" />
+
+
 > **SPANDANA** turns raw Bengaluru traffic-incident reports into ranked, confidence-aware recommendations — *how severe* an incident is, *how long* it will take to clear, *where* risk is rising in the next 3 hours, *which* units to dispatch, and *what* diversions and rain-clog risks to expect.
 >
 > **SPANDANA advises. A human operator always confirms.** It never controls traffic signals and is **not** the live BTP “ASTraM” product.
